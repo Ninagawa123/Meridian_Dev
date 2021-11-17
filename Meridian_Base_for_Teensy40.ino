@@ -2,7 +2,7 @@
 //Teensy 4.0
 
 /*
-  Teensy4.0 Pinassign
+  Teensy4.0 Pin Assign
 
   [GND]               -> GND
   [00] RX1, CRX2      -> ICS_3rd_TX
