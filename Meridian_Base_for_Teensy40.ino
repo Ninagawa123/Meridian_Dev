@@ -522,13 +522,15 @@ void loop() {
       Serial.print("RvNG****");//受信のシリアル表示
     }
   }
-  if (trial % 200 == 0) { //エラー率の表示
-    Serial.print("error rate ");
-    Serial.print(float(error) / float(trial) * 100);
-    Serial.print(" %  ");
-    Serial.print(error);
-    Serial.print("/");
-    Serial.println(trial);
+  if (monitor_resv_error == 1) {
+    if (trial % 200 == 0) { //エラー率の表示
+      Serial.print("error rate ");
+      Serial.print(float(error) / float(trial) * 100);
+      Serial.print(" %  ");
+      Serial.print(error);
+      Serial.print("/");
+      Serial.println(trial);
+    }
   }
 
   // <6-4> シリアルモニタ表示（受信データ）
