@@ -14,13 +14,13 @@
   [06]                -> ICS_Left_EN
   [07] RX2            -> ICS_Left_TX
   [08] TX2            -> ICS_Left_RX
-  [09]                -> SD_CS (ESP32[15])
+  [09]                -> SD_DAT3/CD (SD[2])
   [10] CS             -> SPI_CS (ESP32[15])
-  [11] MOSI           -> SPI/SD_MOSI (ESP32[13])
-  [12] MISO           -> SPI/SD_MISO (ESP32[12])
+  [11] MOSI           -> SPI/SD_MOSI (ESP32[13]) & SD_CMD (SD[3])
+  [12] MISO           -> SPI/SD_MISO (ESP32[12]) & SD_DAT0 (SD[7])
   [Vin]               -> 5V
   [AGND]              ->
-  [3.3v]              -> GY-521(MPU6050) 3.3Vin
+  [3.3v]              -> GY-521(MPU6050) 3.3Vin & SD_VDD (SD[4])
   [23] CRX1           -> ICS_3rd_EN
   [22] CTX1           ->
   [21] RX5            ->
@@ -31,7 +31,7 @@
   [16] RX4, I2C-SCL1  -> (PC/Raspi etc.)
   [15] RX3            -> ICS_Right_TX
   [14] TX3            -> ICS_Right_RX
-  [13] SCK(CRX1)      -> SPI/SD_SCK (ESP32[14])
+  [13] SCK(CRX1)      -> SPI/SD_SCK (ESP32[14]) & SD_CLK (SD[5])
 
   Servo ID Assign
 
