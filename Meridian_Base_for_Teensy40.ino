@@ -274,7 +274,7 @@ void setup() {
   idr_n[14] = 0;//追加テスト用
 
   //PCでのシリアルモニタ表示
-  Serial.begin(600000000);//シリアルモニター表示
+  Serial.begin(60000000);//シリアルモニター表示
 
   delay(100); merc = merc + 100; //ちょっと安定させるためのディレイ（要調整）
 
@@ -452,7 +452,6 @@ void loop() {
   for (int i = 0; i < 15; i++) {
     s_merdim.sval[i * 2 + 20] = 0; //各サーボのコマンドをポジション指示(1)にする
     s_merdim.sval[i * 2 + 21] = float2HFshort(idl_d[i]); //s_merdimに最新のサーボ角度degreeを格納
-
   }
   for (int i = 0; i < 15; i++) {
     s_merdim.sval[i * 2 + 50] = 0; //各サーボのコマンドをポジション指示(1)にする
@@ -522,14 +521,14 @@ void loop() {
     if (monitor_resv_check == 1) {
       Serial.print("RvNG****");//受信のシリアル表示
     }
-    if (monitor_resv_error == 1) {//エラー率の表示
-      Serial.print("error rate ");
-      Serial.print(float(error) / float(trial) * 100);
-      Serial.print(" %  ");
-      Serial.print(error);
-      Serial.print("/");
-      Serial.println(trial);
-    }
+  }
+  if (trial % 200 == 0) { //エラー率の表示
+    Serial.print("error rate ");
+    Serial.print(float(error) / float(trial) * 100);
+    Serial.print(" %  ");
+    Serial.print(error);
+    Serial.print("/");
+    Serial.println(trial);
   }
 
   // <6-4> シリアルモニタ表示（受信データ）
