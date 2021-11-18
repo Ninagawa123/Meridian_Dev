@@ -6,6 +6,8 @@ from re import I
 import rospy
 from sensor_msgs.msg import JointState
 
+import numpy as np
+
 import socket
 from contextlib import closing
 import struct
@@ -14,13 +16,13 @@ import math
 import signal
 
 
-UDP_RESV_IP="192.168.xxx.xxx" #このPCのIPアドレス
+UDP_RESV_IP="192.168.xx.xx" #このPCのIPアドレス
 UDP_RESV_PORT=22222 #受信ポート
 
-UDP_SEND_IP="192.168.xxx.xxx" #送信先のIPアドレス
+UDP_SEND_IP="192.168.xx.xx" #送信先のIPアドレス
 UDP_SEND_PORT=22224 #送信ポート
 
-MSG_SIZE = 92
+MSG_SIZE = 90
 MSG_BUFF = MSG_SIZE * 2
 
 sock=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)#UDP用のsocket設定
@@ -39,17 +41,19 @@ while not rospy.is_shutdown():
             loop_count += 1
             r_bin_data,addr = sock.recvfrom(1472)
             sock.sendto(r_bin_data,(UDP_SEND_IP,UDP_SEND_PORT))
-            r_short_data=struct.unpack('92h',r_bin_data)
+            r_short_data=struct.unpack('90h',r_bin_data)
             
-            # checksum culc
-            checksum = 0
-            for i in  range(MSG_SIZE-2):
-                checksum += r_short_data[i]
-            checksum = ~checksum & 0xffff
-            
-            if checksum == r_short_data[MSG_SIZE-1]:
-                print("Reseived OK. ",loop_count )
+            print(r_short_data)
 
+            checksum = np.array([0], dtype=np.int16)
+            for i in  range(MSG_SIZE-2):
+                checksum[0] += r_short_data[i]
+            checksum[0] = ~checksum[0] & 0xffff
+            print("[Calc] ",checksum[0])
+            print("[Ans ] ",r_short_data[MSG_SIZE-1])
+
+            if checksum[0] == r_short_data[MSG_SIZE-1]:
+                
                 joint_pub = rospy.Publisher('joint_states', JointState, queue_size=10)
                 rospy.init_node('joint_state_publisher_meridim')
                 rate = rospy.Rate(500) # 500hz
@@ -64,11 +68,12 @@ while not rospy.is_shutdown():
                 rate.sleep() 
 
             else:
-                print("DATA ERROR")
+                #print("DATA ERROR")
                 error_count += 1
-                print("COUNT:",loop_count," ERROR:",error_count," ErrorRatio:",error_count/loop_count)
 
             signal.signal(signal.SIGINT, signal.SIG_DFL)
+            
+            print("COUNT:",loop_count," ERROR:",error_count," ErrorRatio:",'{:.02f}'.format(error_count/loop_count*100),"%")
         
     
 
