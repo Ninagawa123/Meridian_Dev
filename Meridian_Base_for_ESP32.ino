@@ -1,4 +1,4 @@
-//Meridian_211117_for_ESP32
+//Meridian_211118_for_ESP32
 //ESP32_DevKitC
 
 /*
@@ -49,13 +49,12 @@
 
 ESP32DMASPI::Slave slave;
 
-static const int MSG_SIZE = 92;
+static const int MSG_SIZE = 90;
 static const int MSG_BUFF = MSG_SIZE * 2;
 
 uint8_t* s_message_buf;
 uint8_t* r_message_buf;
 int checksum;
-
 
 typedef union
 {
@@ -65,20 +64,19 @@ typedef union
 
 UnionData s_message_buf_2;
 UnionData r_message_buf_2;
-
+UnionData s_message_buf_3;
 
 //UDPの設定
 #include <WiFi.h>
 #include <WiFiUdp.h>
 
-const char* ssid = "xxxx";
-const char* password = "xxxx";
-const char* send_address = "192.168.xxx.xxx";  //送り先
+const char* ssid = "xxxxxx";
+const char* password = "xxxxxx";
+const char* send_address = "192.168.xx.xx";  //送り先
 const int send_port = 22222;  //送り先
 const int receive_port = 22224;  //このESP32 のポート番号
 
 WiFiUDP udp;
-
 
 //共用体の設定。共用体はたとえばデータをショートで格納し、バイト型として取り出せる
 typedef union {
@@ -91,7 +89,7 @@ UDPData r_upd_message_buf; //受信用共用体のインスタンスを宣言
 int count = 0;//送信変数用のカウント
 
 //通信のエラーカウント
-long spi_error = 0;
+long spi_ok = 0;
 long spi_trial = 0;
 long udp_ok = 0;
 long udp_trial = 0;
@@ -100,16 +98,15 @@ long udp_trial = 0;
 //*********** 各 種 モ ー ド 設 定  ****************
 //************** 0:OFF, 1:ON  ********************
 //************************************************
-bool monitor_src = 0; //ESP32でのシリアル表示:送信ソースデータ
 bool monitor_udp_send = 0; //ESP32でのシリアル表示:UDP送信データ
 bool monitor_udp_resv = 0; //ESP32でのシリアル表示:UDP受信データ
 bool monitor_spi_send = 0; //ESP32でのシリアル表示:SPI送信データ
 bool monitor_spi_resv = 0; //ESP32でのシリアル表示:SPI受信データ
-bool monitor_udp_resv_check = 0; //ESP32でのシリアル表示:受信成功の可否
-bool monitor_udp_resv_error = 0; //ESP32でのシリアル表示:受信エラー率
-bool monitor_spi_resv_error = 0; //ESP32でのシリアル表示:受信エラー率
-bool monitor_all_error = 0; //ESP32でのシリアル表示:全経路の受信エラー率(未導入)
-bool monitor_resv_checksum = 0; //ESP32でのシリアル表示:受信成功の可否
+bool monitor_udp_resv_check = 0; //ESP32でのシリアル表示:UDP受信成功の可否
+bool monitor_udp_resv_error = 0; //ESP32でのシリアル表示:UDP受信エラー率
+bool monitor_spi_resv_check = 0; //ESP32でのシリアル表示:SPI受信成功の可否
+bool monitor_spi_resv_error = 0; //ESP32でのシリアル表示:SPI受信エラー率
+bool monitor_all_error = 0; //ESP32でのシリアル表示:全経路の受信エラー率
 
 void setup()
 {
@@ -142,11 +139,10 @@ void setup()
   memset(r_message_buf, 0, MSG_BUFF);
 
   // set send data
-
   checksum = 0;
   for (int i = 0; i < MSG_SIZE - 1; i++) // put datas in allay except last
   {
-    s_message_buf[i] = uint8_t(MSG_SIZE - i);
+    s_message_buf[i] = short(MSG_SIZE - i);
     checksum += MSG_SIZE - i; // add checksum
   }
   s_message_buf[MSG_SIZE - 1] = uint8_t(checksum & 0xFF ^ 0xFF); //put checksum in last
@@ -166,7 +162,6 @@ void receiveUDP() {
   int packetSize = udp.parsePacket();
   byte tmpbuf[MSG_BUFF];
 
-
   //データの受信
   if (packetSize == MSG_BUFF) {
     udp.read(tmpbuf, MSG_BUFF);
@@ -174,6 +169,7 @@ void receiveUDP() {
     {
       r_upd_message_buf.bval[i] = tmpbuf[i];
     }
+    udp_trial ++;
 
     //データのシリアルモニタ表示
     if (monitor_udp_resv == 1) {
@@ -185,42 +181,52 @@ void receiveUDP() {
       }
       Serial.println();
     }
+
+    checksum = 0;
+    for (int i = 0; i < MSG_SIZE - 1; i++) {
+      checksum += r_upd_message_buf.sval[i];
+    }
+
+    checksum = (checksum ^ 0xff) & 0xff;
+    if (uint8_t(r_upd_message_buf.sval[MSG_SIZE - 1]) == uint8_t(checksum)) {
+      if (monitor_udp_resv_check == 1) {
+        Serial.print("[UDP CKsm] OK!:  "); Serial.print(uint8_t(checksum));
+        Serial.print(" : "); Serial.println(uint8_t(r_upd_message_buf.sval[MSG_SIZE - 1]));
+      }
+      udp_ok ++;
+    } else
+    {
+      if (monitor_udp_resv_check == 1) {
+        Serial.print("[UDP CKsm]*ERR*: "); Serial.print(uint8_t(checksum));
+        Serial.print(" : "); Serial.println(uint8_t(r_upd_message_buf.sval[MSG_SIZE - 1]));
+      }
+    }
+
+    if (udp_trial >= 1000) { //エラー率の表示
+      if (monitor_udp_resv_error == 1) {
+        Serial.print("[UDP error rate] ");
+        Serial.print(float(udp_trial - udp_ok) / float(udp_trial) * 100);
+        Serial.print(" %  ");
+        Serial.print(udp_trial - udp_ok);
+        Serial.print("/");
+        Serial.println(udp_trial);
+      }
+    }
+
+    if (udp_trial >= 30000) {
+      udp_trial = 0;
+      udp_ok = 0;
+    }
+
+
   } else
   {
-    if (monitor_udp_resv == 1) {
-      Serial.println("none.");
+    if ((monitor_udp_resv == 1) or (monitor_udp_resv_check == 1)) {
+      Serial.println("waiting UDP...");
     }
   }
 
 
-  udp_trial ++;
-  long checksum = 0;
-  for (int i = 0; i < MSG_SIZE - 1; i++) {
-    checksum += r_upd_message_buf.sval[i];
-  }
-  checksum = checksum & 0xFF ^ 0xFF;
-  if (r_upd_message_buf.sval[MSG_SIZE - 1] == (short)checksum) {
-    if (monitor_udp_resv_check == 1) {
-      Serial.println("UDP Rvok!");
-    }
-    udp_ok ++;
-  } else
-  {
-    if (monitor_udp_resv_check == 1) {
-      Serial.println("UDP RvNG*");
-    }
-  }
-
-  if (udp_trial % 200 == 0) { //エラー率の表示
-    if (monitor_udp_resv_error == 1) {
-      Serial.print("UDP error rate ");
-      Serial.print(float(udp_trial-udp_ok) / float(udp_trial) * 100);
-      Serial.print(" %  ");
-      Serial.print(udp_trial-udp_ok);
-      Serial.print("/");
-      Serial.println(udp_trial);
-    }
-  }
 }
 
 
@@ -238,7 +244,7 @@ void sendUDP() {
   }
 
   //送信データの表示
-  if (monitor_src == 1) {
+  if (monitor_udp_send == 1) {
     Serial.println("[UDP SEND] " + test );//送信データ（short型）を表示
   }
 
@@ -255,7 +261,28 @@ void loop()
   //UDP受信配列からSPI送信配列にデータを転写
   for (int i = 0; i < MSG_BUFF; i++) {
     s_message_buf[i] = r_upd_message_buf.bval[i];
+    s_message_buf_3.bval[i] = r_upd_message_buf.bval[i];
   }
+
+  //ESP32で独自に取得した情報をSPI送信配列に載せる
+  //UDP受信エラー情報を上書き
+  s_message_buf_3.sval[82] = short(spi_trial);
+  s_message_buf_3.sval[83] = short(spi_trial - spi_ok);
+  s_message_buf_3.sval[84] = short(udp_trial);
+  s_message_buf_3.sval[85] = short(udp_trial - udp_ok);
+
+  for (int i = 0; i < MSG_BUFF; i++) {
+    s_message_buf[i] = s_message_buf_3.bval[i];
+  }
+
+  //チェックサムを再作成
+  long checksum = 0;
+  for (int i = 0; i < MSG_SIZE - 1 ; i++) {
+    checksum += int(r_message_buf[i]);
+  }
+  checksum = (checksum ^ 0xff) & 0xff;
+  s_message_buf[MSG_SIZE - 1] = uint8_t(checksum);
+
 
   // SPI send data
   if (slave.remained() == 0) {
@@ -266,14 +293,13 @@ void loop()
   memcpy(r_message_buf_2.bval, r_message_buf, MSG_BUFF);
   //delayMicroseconds(1);
 
-  // show send data
   while (slave.available())
   {
 
     // show send data
     if (monitor_spi_send == 1) {
       Serial.print("[SPI SEND] : ");
-      for (uint32_t i = 0; i < MSG_SIZE; i++)
+      for (int i = 0; i < MSG_SIZE; i++)
       {
         Serial.print(s_message_buf[i]);
         Serial.print(",");
@@ -293,31 +319,72 @@ void loop()
 
     slave.pop();//end transaction??
 
-    // checksum culc
-    checksum = 0;
+    // SPI受信のチェックサムを計算
+    spi_trial ++;
+    long checksum = 0;
     for (int i = 0; i < MSG_SIZE - 1 ; i++) {
       checksum += int(r_message_buf_2.sval[i]);
     }
     checksum = (checksum ^ 0xff) & 0xff;
 
-    // show checksum result
-    if (uint8_t (checksum) == uint8_t(r_message_buf_2.sval[MSG_SIZE - 1])) {
-      if (monitor_resv_checksum == 1) {
-        Serial.print("CKsm OK!: "); Serial.println(uint8_t (checksum));
+    // SPI受信のチェックサム結果を判定・表示
+    if (uint8_t(checksum) == uint8_t(r_message_buf_2.sval[MSG_SIZE - 1])) {
+      if (monitor_spi_resv_check == 1) {
+        Serial.print("[SPI CKsm] OK!:  "); Serial.print(uint8_t(checksum));
+        Serial.print(" : "); Serial.println(uint8_t(r_message_buf_2.sval[MSG_SIZE - 1]));
       }
+      spi_ok ++;
     } else {
-      if (monitor_resv_checksum == 1) {
-        Serial.print("CKsm**ERR**: "); Serial.println(uint8_t (checksum));
+      if (monitor_spi_resv_check == 1) {
+        Serial.print("[SPI CKsm]*ERR*: "); Serial.print(uint8_t(checksum));
+        Serial.print(" : "); Serial.println(uint8_t(r_message_buf_2.sval[MSG_SIZE - 1]));
       }
     }
   }
 
-  //SPI受信配列からUDP送信配列にデータを転写
+  if (spi_trial >= 500) { //エラー率の表示
+    if (monitor_spi_resv_error == 1) {
+      Serial.print("[SPI error rate] ");
+      Serial.print(float(spi_trial - spi_ok) / float(spi_trial) * 100);
+      Serial.print(" %  ");
+      Serial.print(spi_trial - spi_ok);
+      Serial.print("/");
+      Serial.println(spi_trial);
+    }
+  }
+  if (spi_trial >= 30000) {
+    spi_trial = 0;
+    spi_ok = 0;
+  }
+
+  // SPI受信配列からUDP送信配列にデータを転写
   for (int i = 0; i < MSG_BUFF; i++) {
     s_upd_message_buf.bval[i] = r_message_buf_2.bval[i];
   }
 
   sendUDP();//UDPで送信
 
-  delayMicroseconds(100);
+
+  //全経路の受信エラー率表示
+  if (monitor_all_error == 1) {
+    if  (s_message_buf_3.sval[84] != 0) {
+      Serial.print("[UDP_resv_err] ");
+      Serial.print(s_message_buf_3.sval[85]);
+      Serial.print("/");
+      Serial.print(s_message_buf_3.sval[84]);
+      Serial.print(" ");
+      Serial.print(float(s_message_buf_3.sval[85]) / (float(s_message_buf_3.sval[84])) * 100);
+      Serial.println(" %");
+    }
+        if  (s_message_buf_3.sval[82] != 0) {
+      Serial.print("[SPI_resv_err] ");
+      Serial.print(s_message_buf_3.sval[83]);
+      Serial.print("/");
+      Serial.print(s_message_buf_3.sval[82]);
+      Serial.print(" ");
+      Serial.print(float(s_message_buf_3.sval[83]) / (float(s_message_buf_3.sval[82])) * 100);
+      Serial.println(" %");
+    }
+    delayMicroseconds(100);
+  }
 }
