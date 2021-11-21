@@ -118,7 +118,7 @@
 //[S-3] 各種設定 #DEFINE ---------------------------------
 #define ERR_LED 2 //LED用 処理が時間内に収まっていない場合に点灯
 #define CHIPSELECT_SD 9 //SDカードSPI通信用のChipSelectのピン番号
-#define SERIAL_PC 60000000 //Meridim配列の長さ設定（デフォルトは90）
+#define SERIAL_PC 60000000 //PCとのシリアル速度（モニタリング表示用）
 #define MSG_SIZE 90 //Meridim配列の長さ設定（デフォルトは90）
 #define IMU_MOUNT 0 //IMUの搭載状況 0=off, 1=MPU6050, ...
 #define IMU_FREQ 10 //センサの読み取り間隔(ms)
