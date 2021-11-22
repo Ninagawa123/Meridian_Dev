@@ -38,7 +38,7 @@ UnityやROSとの連携に対応しています。
 次にMeridian_Base_for_Teensy40.inoとMeridian_Base_for_ESP32.inoのファイルをそれぞれArduinoIDE、Teensyduino等を使ってTeensy4.0,ESP32に書き込みます。
 最初に必要なライブラリの導入が必要です。
 
-###Teensy4.0用として必要なライブラリ
+### Teensy4.0用として必要なライブラリ
 
 * TsyDMASPI (Teensyduinoの「ツール」→「ライブラリマネージャ」より検索＆インストール)
 
@@ -52,7 +52,7 @@ UnityやROSとの連携に対応しています。
 * MPU6050_6Axis_MotionApps20(https://github.com/carloschar/MPU6050_6Axis5 より「MPU6050_6Axis_MotionApps20.h」をDLし、
 　I2CDevのフォルダをTeensyduinoのlibrariesディレクトリに移して再起動。
 
-###ESP32用として必要なライブラリ
+### ESP32用として必要なライブラリ
 * ESP32DAMSPI(Teensyduinoの「ツール」→「ライブラリマネージャ」より検索＆インストール)
 
 最後に、手元の環境にROSパッケージを作成し、rosnode_meridim_base.pyを含めてください。
