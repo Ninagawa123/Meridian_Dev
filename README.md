@@ -6,18 +6,23 @@
 PC画面のシミュレーション結果と実際のロボットの動作を高速通信でリアルタイムに連動させることができます。
 UnityやROSとの連携に対応しています。
 
+# Demo
 このデモでは、ROSのRvisを利用して、脱力状態のサーボロボットの関節を手で動かすと、画面内のロボットにその動きが即時反映されるということを楽しめます。
 
-使用する機材は以下の4つです。
+# Requirement
+使用する機材は以下の5つです。
 
-1.サーボロボット(KHR-4HV等)
+* 1.サーボロボット(KHR-4HV等)
 
-2.Teensy4.0 (サーボ制御用)
+* 2.Teensy4.0 (サーボ制御用)
 
-3.ESP32devkitC (wifi通信用)
+* 3.ESP32devkitC (wifi通信用)
 
-4.PC
+* 4.Meridian Boar もしくはブレッドボード
 
+* 5.PC
+
+# Features
 デバイス間の連携は以下の経路での双方向通信となります。
 
 サーボモーター-(半二重シリアル)-Teensy4.0-(SPI)-ESP32-(Wifi/UDP通信)-(アクセスポイント)-PC/Unity/ROS
@@ -25,7 +30,7 @@ UnityやROSとの連携に対応しています。
 メリディアンのプロトロコルはMeridim配列と命名したUDP通信１パケットに収まるコンパクトな書式です。
 約90個のShort型のデータ配列で、30個分のサーボデータに加え、IMU情報やユーザーが作成したデータも盛り込むことができます。
 
-#デモの使い方
+# Installation
 
 まず、Meridian Boardを準備します。回路図の草案はpdfに同梱していますので、ブレッドボード等で作成することができます。
 （今後、プリント基板を同人ハードとして頒布することも予定しています。）
@@ -33,22 +38,22 @@ UnityやROSとの連携に対応しています。
 次にMeridian_Base_for_Teensy40.inoとMeridian_Base_for_ESP32.inoのファイルをそれぞれArduinoIDE、Teensyduino等を使ってTeensy4.0,ESP32に書き込みます。
 最初に必要なライブラリの導入が必要です。
 
-Teensy4.0用として必要なライブラリ
+###Teensy4.0用として必要なライブラリ
 
-・TsyDMASPI (Teensyduinoの「ツール」→「ライブラリマネージャ」より検索＆インストール)
+* TsyDMASPI (Teensyduinoの「ツール」→「ライブラリマネージャ」より検索＆インストール)
 
-・MPU6050 (同上)
+* MPU6050 (同上)
 
-・Madgwick (同上)
+* Madgwick (同上)
 
-・IcsHardSerialClass(https://kondo-robot.com/faq/ics-library-a2 より「ICS_Library_for_Arduino_V2.1」をDLし、
+* IcsHardSerialClass(https://kondo-robot.com/faq/ics-library-a2 より「ICS_Library_for_Arduino_V2.1」をDLし、
 　Teensyduinoの「スケッチ」→「ライブラリをインクルード」→「.ZIP形式のライブラリをインストール...」
 　
-・MPU6050_6Axis_MotionApps20(https://github.com/carloschar/MPU6050_6Axis5 より「MPU6050_6Axis_MotionApps20.h」をDLし、
+* MPU6050_6Axis_MotionApps20(https://github.com/carloschar/MPU6050_6Axis5 より「MPU6050_6Axis_MotionApps20.h」をDLし、
 　I2CDevのフォルダをTeensyduinoのlibrariesディレクトリに移して再起動。
 
-ESP32用として必要なライブラリ
-・ESP32DAMSPI(Teensyduinoの「ツール」→「ライブラリマネージャ」より検索＆インストール)
+###ESP32用として必要なライブラリ
+* ESP32DAMSPI(Teensyduinoの「ツール」→「ライブラリマネージャ」より検索＆インストール)
 
 最後に、手元の環境にROSパッケージを作成し、rosnode_meridim_base.pyを含めてください。
 
