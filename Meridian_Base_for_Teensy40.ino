@@ -127,7 +127,7 @@
 #define BAUDRATE 1250000 //ICSサーボの通信速度1.25M
 #define TIMEOUT 1000 //返信待ちのタイムアウト時間。通信できてないか確認する場合には1000ぐらいに設定するとよい。
 #define JOYPAD 0 //0:なし、Wiimote:1, Wiimote+:2, KRC-5FH:3 (※すべて未実装)
-#define ESP32_MOUNT 0 //0:なし(SPI通信およびUDP通信を実施しない)、1:あり
+#define ESP32_MOUNT 1 //0:なし(SPI通信およびUDP通信を実施しない)、1:あり
 
 
 //タイマー管理用の変数
