@@ -18,9 +18,9 @@ UnityやROSとの連携に対応しています。
 
 * 3.ESP32devkitC (wifi通信用)
 
-* 4.Meridian Boar もしくはブレッドボード
+* 4.Meridian Boar もしくはブレッドボード,半二重回路（ICS変換基板等）
 
-* 5.PC
+* 5.PC（wifi/ROS環境/Rviz）
 
 # Features
 デバイス間の連携は以下の経路での双方向通信となります。
@@ -59,8 +59,9 @@ UnityやROSとの連携に対応しています。
 
 https://github.com/Ninagawa123/roid1_urdf
 
-を実行してRvisで立ち上げた上、
+を実行できる状態にして、display_meridian_demo.launchを実行するとRvisが立ち上がります。
 先ほど作成したパッケージのrosnode_meridim_base.pyを実行してください。
 ロボットの関節を手で動かした時の姿勢が、Rvis上のロボット画像にも反映されます。
 
-ちょっと説明不足すぎる気もしますが、説明文も今後開発を進めながら追記していきます。
+# 説明不足すみません
+ちょっと説明不足すぎる気もしますが、今後開発を進めながら追記していきます。
