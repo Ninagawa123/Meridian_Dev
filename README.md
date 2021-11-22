@@ -63,5 +63,15 @@ https://github.com/Ninagawa123/roid1_urdf
 先ほど作成したパッケージのrosnode_meridim_base.pyを実行してください。
 ロボットの関節を手で動かした時の姿勢が、Rvis上のロボット画像にも反映されます。
 
+### 各ファイルの説明
+
+* Meridian_Base_for_ESP32_PathThrough : ESP32に書き込むファイルです。送受信以外なにもしないパススルー方式のため高速・快適に動作します。
+　91,92行目にWifiの設定,93行目にはPCのIPアドレスを調べて入れてください。シリアルモニタに接続した状態で起動すると、ESP32自身のIPアドレスを表示しますので、rosnode_meridim_base.pyの設定に利用してください。
+* Meridian_Base_for_Teensy40 : Teensy4.0に書き込むファイルです。
+* rosnode_meridim_base.py : ROSで作成するパッケージに入れるパイソンです。IPアドレスを設定してください。
+* Meridian_Base_flow_chart.txt : 主にTeensy側の処理についてのおおまかなフローチャートです。
+* Meridian_TypeK_1.pdf : ブレッドボード等で使う場合の回路図です。
+* その他 : 実験中のファイルです。まともに動かない場合がほとんどです。
+
 # 説明不足すみません
 ちょっと説明不足すぎる気もしますが、今後開発を進めながら追記していきます。
