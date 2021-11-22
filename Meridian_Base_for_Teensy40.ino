@@ -1,4 +1,4 @@
-//Meridian_base_211119_for_Teensy
+//Meridian_base_211122_for_Teensy
 //This code is for Teensy 4.0
 
 /*
@@ -126,7 +126,9 @@
 #define EN_R_PIN 5 //ICSサーボ信号の右系のENピン番号
 #define BAUDRATE 1250000 //ICSサーボの通信速度1.25M
 #define TIMEOUT 1000 //返信待ちのタイムアウト時間。通信できてないか確認する場合には1000ぐらいに設定するとよい。
-#define JOYPAD　0 //0:なし、Wiimote:1, Wiimote+:2, KRC-5FH:3 (※すべて未実装)
+#define JOYPAD 0 //0:なし、Wiimote:1, Wiimote+:2, KRC-5FH:3 (※すべて未実装)
+#define ESP32_MOUNT 0 //0:なし(SPI通信およびUDP通信を実施しない)、1:あり
+
 
 //タイマー管理用の変数
 long frame_ms = 5;// 1フレームあたりの単位時間(μs)
@@ -445,7 +447,7 @@ void getYawPitchRoll() {
 // ■ ヨー軸の原点リセット --------------------------------------------------------
 void setyaw() {
   YAW_ZERO = ypr[0] * 180 / M_PI;
-  s_merdim.sval[0] == MSG_SIZE;
+  s_merdim.sval[0] = MSG_SIZE;
 }
 
 // ■ 全サーボオフ ---------------------------------------------------------------
@@ -624,10 +626,9 @@ void loop() {
     Serial.println();
   }
 
-
   // [6-2] ESP32へのSPI送信の実行
+  if (ESP32_MOUNT == 1){
   TsyDMASPI0.transfer(s_packet.bval, r_packet.bval, MSG_BUFF);
-
 
   // [6-3] ESP32からのSPI受信データチェックサム確認と成否のシリアル表示
   int checksum = 0;
@@ -672,9 +673,10 @@ void loop() {
     }
     Serial.println();
   }
+  }
 
 
-//---- < 7 > フレーム終端処理 -------------------------------------------------
+  //---- < 7 > フレーム終端処理 -------------------------------------------------
 
   // [7-1] この時点で１フレーム内に処理が収まっていない時の処理
   curr = (long)millis(); // 現在時刻を更新
