@@ -1,4 +1,4 @@
-//Meridian_base_211122_for_Teensy
+//Meridian_base_211123_for_Teensy
 //This code is for Teensy 4.0
 
 /*
@@ -120,23 +120,24 @@
 #define CHIPSELECT_SD 9 //SDカードSPI通信用のChipSelectのピン番号
 #define SERIAL_PC 60000000 //PCとのシリアル速度（モニタリング表示用）
 #define MSG_SIZE 90 //Meridim配列の長さ設定（デフォルトは90）
-#define IMU_MOUNT 0 //IMUの搭載状況 0=off, 1=MPU6050, ...
+#define IMU_MOUNT 1 //IMUの搭載状況 0=off, 1=MPU6050, ...
 #define IMU_FREQ 10 //センサの読み取り間隔(ms)
 #define EN_L_PIN 6 //ICSサーボ信号の左系のENピン番号
 #define EN_R_PIN 5 //ICSサーボ信号の右系のENピン番号
 #define BAUDRATE 1250000 //ICSサーボの通信速度1.25M
 #define TIMEOUT 1000 //返信待ちのタイムアウト時間。通信できてないか確認する場合には1000ぐらいに設定するとよい。
-#define JOYPAD 0 //0:なし、Wiimote:1, Wiimote+:2, KRC-5FH:3 (※すべて未実装)
-#define ESP32_MOUNT 1 //0:なし(SPI通信およびUDP通信を実施しない)、1:あり
-
+#define JOYPAD_MOUNT 3 //0:なし、Wiimote:1, Wiimote+:2, KRC-5FH:3 (※KRC-5FH:3のみ実装済,MeridianBoardではICS_R系に接続)
+#define JOYPAD_FRAME 4 //上記JOYPADのデータを読みに行くフレーム間隔 (※KRC-5FHでは4推奨)
+#define ESP32_MOUNT 0 //0:なし(SPI通信およびUDP通信を実施しない)、1:あり
 
 //タイマー管理用の変数
-long frame_ms = 5;// 1フレームあたりの単位時間(μs)
+long frame_ms = 5;// 1フレームあたりの単位時間(ms)
 long merc = (long)millis(); // フレーム管理時計の時刻 Meridian Clock.
 long curr = (long)millis(); // 現在時刻を取得
 long curr_micro = (long)micros(); // 現在時刻を取得
 int framecount = 0;//サイン計算用の変数
 int framecount_diff = 2;//サインカーブ動作などのフレームカウントをいくつずつ進めるか
+int joypad_framecount = 0;//JOYPADのデータを読みに行くためのフレームカウント
 
 //変数一般
 static const int MSG_BUFF = MSG_SIZE * 2; //Meridim配列の長さ（byte換算）
@@ -145,6 +146,12 @@ int spi_ok = 0; //通信のエラーカウント
 int spi_trial = 0; //通信のエラーカウント
 bool file_open = 0; //SDカード用の変数
 int k; //各サーボの計算用変数
+unsigned short button_1 = 0;//受信ボタンデータ1群
+unsigned short button_2 = 0;//受信ボタンデータ2群
+short stick_Lx = 0;//受信ジョイスティックデータLx
+short stick_Ly = 0;//受信ジョイスティックデータLy
+short stick_Rx = 0;//受信ジョイスティックデータRx
+short stick_Ry = 0;//受信ジョイスティックデータRy
 
 //共用体の宣言 : Meridim配列格納用、SPI送受信バッファ配列格納用
 typedef union //共用体は共通のメモリ領域に異なる型で数値を読み書きできる
@@ -203,11 +210,11 @@ bool trim_adjust = 0; //トリムモードのオンオフ、起動時に下記�
 bool monitor_src = 0; //Teensyでのシリアル表示:送信ソースデータ
 bool monitor_send = 0; //Teensyでのシリアル表示:送信データ
 bool monitor_resv = 0; //Teensyでのシリアル表示:受信データ
-bool monitor_resv_check = 0; //Teensyでのシリアル表示:受信成功の可否
-bool monitor_resv_error = 0; //Teensyでのシリアル表示:受信エラー率
+bool monitor_resv_check = 1; //Teensyでのシリアル表示:受信成功の可否
+bool monitor_resv_error = 1; //Teensyでのシリアル表示:受信エラー率
 bool monitor_all_error = 0; //Teensyでのシリアル表示:全経路の受信エラー率
 bool monitor_rpy = 0; //Teensyでのシリアル表示:IMUからのrpy換算値
-bool monitor_krc_5fh = 0; //Teensyでのシリアル表示:KRC-5FHリモコンのデータ
+bool monitor_joypad = 1; //Teensyでのシリアル表示:リモコンのデータ
 
 void setup() {
   //-------------------------------------------------------------------------
@@ -467,6 +474,27 @@ void servo_all_off() {
   Serial.println("All servos off.");
 }
 
+
+// ■ JOYPAD処理 ---------------------------------------------------------------
+void joypad_read() {
+  if (JOYPAD_MOUNT == 3) {//KRR5FH(KRC-5FH)をICS_R系に接続している場合
+    joypad_framecount ++;
+    if (joypad_framecount >= JOYPAD_FRAME) {
+      unsigned short buttonData;
+      buttonData = krs_R.getKrrButton();
+      delayMicroseconds(2);
+      if (buttonData != KRR_BUTTON_FALSE) //ボタンデータが受信できていたら
+      {
+        button_1 = buttonData;
+        if(monitor_joypad =1){
+        Serial.print("[Button] ");
+        Serial.println(button_1);//ボタンデータを表示
+        }
+      }
+      joypad_framecount = 0;
+    }
+  }
+}
 //-------------------------------------------------------------------------
 //---- メ　イ　ン　ル　ー　プ ------------------------------------------------
 //-------------------------------------------------------------------------
@@ -485,6 +513,9 @@ void loop() {
   //---- < 2 > コントローラの読み取り 動作の設定 ---------------------------------
 
   // [2-1] コントローラの値を取得
+  if (JOYPAD_MOUNT != 0) {//ジョイパッドが接続設定されているかを判定
+    joypad_read();
+    }
 
   //---- < 3 > Teensy内部で位置制御する場合の処理 --------------------------------
 
@@ -627,52 +658,52 @@ void loop() {
   }
 
   // [6-2] ESP32へのSPI送信の実行
-  if (ESP32_MOUNT == 1){
-  TsyDMASPI0.transfer(s_packet.bval, r_packet.bval, MSG_BUFF);
+  if (ESP32_MOUNT == 1) {
+    TsyDMASPI0.transfer(s_packet.bval, r_packet.bval, MSG_BUFF);
 
-  // [6-3] ESP32からのSPI受信データチェックサム確認と成否のシリアル表示
-  int checksum = 0;
-  for (int i = 0; i < MSG_SIZE - 1; i++) {
-    checksum += r_packet.sval[i];
-  }
-  checksum = ~checksum & 0xffff;
-  spi_trial ++;
+    // [6-3] ESP32からのSPI受信データチェックサム確認と成否のシリアル表示
+    int checksum = 0;
+    for (int i = 0; i < MSG_SIZE - 1; i++) {
+      checksum += r_packet.sval[i];
+    }
+    checksum = ~checksum & 0xffff;
+    spi_trial ++;
 
-  if ((short)r_packet.sval[MSG_SIZE - 1] == (short)checksum)//チェックがOKならバッファから受信配列に転記
-  {
-    if (monitor_resv_check == 1) {
-      Serial.println("Rvok! ");//受信OKのシリアル表示
+    if ((short)r_packet.sval[MSG_SIZE - 1] == (short)checksum)//チェックがOKならバッファから受信配列に転記
+    {
+      if (monitor_resv_check == 1) {
+        Serial.println("Rvok! ");//受信OKのシリアル表示
+      }
+      for (int i = 0; i < MSG_SIZE; i++) {
+        r_merdim.sval[i] = r_packet.sval[i];
+      }
+      spi_ok ++;
+    } else
+    {
+      if (monitor_resv_check == 1) {
+        Serial.println("RvNG****");//受信のシリアル表示
+      }
     }
-    for (int i = 0; i < MSG_SIZE; i++) {
-      r_merdim.sval[i] = r_packet.sval[i];
+    if (monitor_resv_error == 1) {
+      if (spi_trial % 200 == 0) { //エラー率の表示
+        Serial.print("error rate ");
+        Serial.print(float(spi_trial - spi_ok) / float(spi_trial) * 100);
+        Serial.print(" %  ");
+        Serial.print(spi_trial - spi_ok);
+        Serial.print("/");
+        Serial.println(spi_trial);
+      }
     }
-    spi_ok ++;
-  } else
-  {
-    if (monitor_resv_check == 1) {
-      Serial.println("RvNG****");//受信のシリアル表示
-    }
-  }
-  if (monitor_resv_error == 1) {
-    if (spi_trial % 200 == 0) { //エラー率の表示
-      Serial.print("error rate ");
-      Serial.print(float(spi_trial - spi_ok) / float(spi_trial) * 100);
-      Serial.print(" %  ");
-      Serial.print(spi_trial - spi_ok);
-      Serial.print("/");
-      Serial.println(spi_trial);
-    }
-  }
 
-  // [6-4] シリアルモニタ表示（受信データ）
-  if (monitor_resv == 1) {
-    Serial.print("  [Resv] ");
-    for (int i = 0; i < MSG_SIZE; i++) {
-      Serial.print(int (r_merdim.sval[i]));
-      Serial.print(",");
+    // [6-4] シリアルモニタ表示（受信データ）
+    if (monitor_resv == 1) {
+      Serial.print("  [Resv] ");
+      for (int i = 0; i < MSG_SIZE; i++) {
+        Serial.print(int (r_merdim.sval[i]));
+        Serial.print(",");
+      }
+      Serial.println();
     }
-    Serial.println();
-  }
   }
 
 
