@@ -1,6 +1,6 @@
 ### TeensyをMeridianテストボード１号に挿した状態だとUSB給電では動作が不安定になる
 Meridianボート上の黄色のジャンパピンでTeensy4.0への給電止められます。
-新バージョンのボードではジャンパピンを抜くとTeesy,ESP32,その他のチップ含めレギュレータからの5V供給を全部停止します。
+新バージョンのボード(Type.K Test 1.0)ではジャンパピンを抜くとTeesy,ESP32,その他のチップ含めレギュレータからの5V供給を全部停止する仕様にしました。
 
 ### Teensy単体でICSサーボの動作テストを行いたい時
 https://github.com/Ninagawa123/Maridian_Base/blob/main/Meridian_Base_for_Teensy40.ino
