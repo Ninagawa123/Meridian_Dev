@@ -50,7 +50,7 @@ UnityやROSとの連携に対応しています。
 　Teensyduinoの「スケッチ」→「ライブラリをインクルード」→「.ZIP形式のライブラリをインストール...」
 　
 * MPU6050_6Axis_MotionApps20(https://github.com/carloschar/MPU6050_6Axis5 より「MPU6050_6Axis_MotionApps20.h」をDLし、
-　I2CDevのフォルダをTeensyduinoのlibrariesディレクトリに移して再起動。
+　I2CDevとMPU6050の２フォルダをTeensyduinoのlibrariesディレクトリに移して再起動。
 
 ### ESP32用として必要なライブラリ
 * ESP32DAMSPI(Teensyduinoの「ツール」→「ライブラリマネージャ」より検索＆インストール)
