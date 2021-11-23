@@ -116,19 +116,25 @@
 #include <IcsHardSerialClass.h> //ICSサーボのライブラリ導入
 
 //[S-3] 各種設定 #DEFINE ---------------------------------
-#define ERR_LED 2 //LED用 処理が時間内に収まっていない場合に点灯
+//マウント有無とピンアサイン (S-3-1) ---------------------------------
+#define ESP32_MOUNT 0 //0:なし(SPI通信およびUDP通信を実施しない)、1:あり
+#define SD_MOUNT 1 //SDカードリーダーのありなし。MeridianBoard Type.Kは有り
 #define CHIPSELECT_SD 9 //SDカードSPI通信用のChipSelectのピン番号
-#define SERIAL_PC 60000000 //PCとのシリアル速度（モニタリング表示用）
-#define MSG_SIZE 90 //Meridim配列の長さ設定（デフォルトは90）
 #define IMU_MOUNT 1 //IMUの搭載状況 0=off, 1=MPU6050, ...
-#define IMU_FREQ 10 //センサの読み取り間隔(ms)
+#define IMU_FREQ 10 //IMUのセンサの読み取り間隔(ms)
+#define JOYPAD_MOUNT 3 //ジョイパッドの搭載 0:なし、Wiimote:1, Wiimote+:2, KRC-5FH:3 (※KRC-5FH:3のみ実装済,MeridianBoardではICS_R系に接続)
+#define JOYPAD_FRAME 4 //上記JOYPADのデータを読みに行くフレーム間隔 (※KRC-5FHでは4推奨)
+#define ICS3_MOUNT 0 //半二重サーボ信号の3系のありなし
+
+//その他の基本設定 (S-3-2) ---------------------------------
+#define MSG_SIZE 90 //Meridim配列の長さ設定（デフォルトは90）
+#define ERR_LED 2 //LED用 処理が時間内に収まっていない場合に点灯
+#define SERIAL_PC 60000000 //PCとのシリアル速度（モニタリング表示用）
 #define EN_L_PIN 6 //ICSサーボ信号の左系のENピン番号
 #define EN_R_PIN 5 //ICSサーボ信号の右系のENピン番号
+#define EN_3_PIN 23 //半二重サーボ信号の3系のENピン番号
 #define BAUDRATE 1250000 //ICSサーボの通信速度1.25M
 #define TIMEOUT 1000 //返信待ちのタイムアウト時間。通信できてないか確認する場合には1000ぐらいに設定するとよい。
-#define JOYPAD_MOUNT 0 //0:なし、Wiimote:1, Wiimote+:2, KRC-5FH:3 (※KRC-5FH:3のみ実装済,MeridianBoardではICS_R系に接続)
-#define JOYPAD_FRAME 4 //上記JOYPADのデータを読みに行くフレーム間隔 (※KRC-5FHでは4推奨)
-#define ESP32_MOUNT 0 //0:なし(SPI通信およびUDP通信を実施しない)、1:あり
 
 //タイマー管理用の変数
 long frame_ms = 5;// 1フレームあたりの単位時間(ms)
@@ -152,6 +158,8 @@ short stick_Lx = 0;//受信ジョイスティックデータLx
 short stick_Ly = 0;//受信ジョイスティックデータLy
 short stick_Rx = 0;//受信ジョイスティックデータRx
 short stick_Ry = 0;//受信ジョイスティックデータRy
+
+int test_val_1 = 0;//テスト用
 
 //共用体の宣言 : Meridim配列格納用、SPI送受信バッファ配列格納用
 typedef union //共用体は共通のメモリ領域に異なる型で数値を読み書きできる
@@ -179,12 +187,13 @@ float ROLL, PITCH, YAW, YAW_ZERO;
 //ICSサーボのインスタンス設定
 IcsHardSerialClass krs_L(&Serial2, EN_L_PIN, BAUDRATE, TIMEOUT);
 IcsHardSerialClass krs_R(&Serial3, EN_R_PIN, BAUDRATE, TIMEOUT);
+IcsHardSerialClass krs_3(&Serial1, EN_3_PIN, BAUDRATE, TIMEOUT);//3系もICSの場合
 
 //KRSサーボのポジション用配列(degreeではなくサーボ値が入る)
-int s_KRS_servo_pos_L[] = {7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500}; //14要素
-int s_KRS_servo_pos_R[] = {7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500}; //14要素
-int r_KRS_servo_pos_L[] = {7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500}; //14要素
-int r_KRS_servo_pos_R[] = {7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500}; //14要素
+int s_KRS_servo_pos_L[] = {7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500}; //15要素
+int s_KRS_servo_pos_R[] = {7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500}; //15要素
+int r_KRS_servo_pos_L[] = {7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500}; //15要素
+int r_KRS_servo_pos_R[] = {7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500}; //15要素
 
 //各サーボの各サーボのマウント判定用配列
 bool idl_mt[15];//idlのありなし（mtはmountの略）
@@ -321,7 +330,9 @@ void setup() {
   delay(100); merc = merc + 100; //ちょっと安定させるためのディレイ（要調整）
   krs_L.begin(); //サーボモータの通信初期設定。Serial2
   krs_R.begin(); //サーボモータの通信初期設定。Serial3
-
+  if (ICS3_MOUNT == 1) {
+    krs_3.begin(); //サーボモータの通信初期設定。Serial1
+  }
   delay(100); merc = merc + 100; //ちょっと安定させるためのディレイ（要調整）
 
   //ESP32との通信用にSPI_MASTERを開始
@@ -486,9 +497,9 @@ void joypad_read() {
       if (buttonData != KRR_BUTTON_FALSE) //ボタンデータが受信できていたら
       {
         button_1 = buttonData;
-        if(monitor_joypad =1){
-        Serial.print("[Button] ");
-        Serial.println(button_1);//ボタンデータを表示
+        if (monitor_joypad = 1) {
+          Serial.print("[Button] ");
+          Serial.println(button_1);//ボタンデータを表示
         }
       }
       joypad_framecount = 0;
@@ -515,7 +526,7 @@ void loop() {
   // [2-1] コントローラの値を取得
   if (JOYPAD_MOUNT != 0) {//ジョイパッドが接続設定されているかを判定
     joypad_read();
-    }
+  }
 
   //---- < 3 > Teensy内部で位置制御する場合の処理 --------------------------------
 
