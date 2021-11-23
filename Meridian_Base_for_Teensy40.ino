@@ -126,7 +126,7 @@
 #define EN_R_PIN 5 //ICSサーボ信号の右系のENピン番号
 #define BAUDRATE 1250000 //ICSサーボの通信速度1.25M
 #define TIMEOUT 1000 //返信待ちのタイムアウト時間。通信できてないか確認する場合には1000ぐらいに設定するとよい。
-#define JOYPAD_MOUNT 3 //0:なし、Wiimote:1, Wiimote+:2, KRC-5FH:3 (※KRC-5FH:3のみ実装済,MeridianBoardではICS_R系に接続)
+#define JOYPAD_MOUNT 0 //0:なし、Wiimote:1, Wiimote+:2, KRC-5FH:3 (※KRC-5FH:3のみ実装済,MeridianBoardではICS_R系に接続)
 #define JOYPAD_FRAME 4 //上記JOYPADのデータを読みに行くフレーム間隔 (※KRC-5FHでは4推奨)
 #define ESP32_MOUNT 0 //0:なし(SPI通信およびUDP通信を実施しない)、1:あり
 
