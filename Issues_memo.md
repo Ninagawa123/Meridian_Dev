@@ -1,6 +1,8 @@
-### TeensyをMeridianテストボード１号に挿した状態だとUSB給電では動作が不安定になる
+### Meridianテストボード１号にTeensy4.0を挿したままの状態だとPCとUSB接続した時に動作が不安定になる
+Teensy4.0特有の問題で、ピンからの給電とUSB給電を同時に行うと出る症状です。
 Meridianボート上の黄色のジャンパピンでTeensy4.0への給電止められます。
 新バージョンのボード(Type.K Test 1.0)ではジャンパピンを抜くとTeesy,ESP32,その他のチップ含めレギュレータからの5V供給を全部停止する仕様にしました。
+ちなみに非推奨のコツみたいなものですが、電源から給電して動いている状態になってからUSBを挿せば、シリアルモニタリングや書き換えも可能のようです。
 
 ### Teensy単体でICSサーボの動作テストを行いたい時
 https://github.com/Ninagawa123/Maridian_Base/blob/main/Meridian_Base_for_Teensy40.ino
