@@ -70,7 +70,7 @@ https://github.com/Ninagawa123/roid1_urdf
 * Meridian_Base_for_Teensy40 : Teensy4.0に書き込むファイルです。
 * rosnode_meridim_base.py : ROSで作成するパッケージに入れるパイソンです。IPアドレスを設定してください。
 * Meridian_Base_flow_chart.txt : 主にTeensy側の処理についてのおおまかなフローチャートです。
-* Meridian_TypeK_1.pdf : ブレッドボード等で使う場合の回路図です。
+* Meridian_TypeK.pdf : ブレッドボード等で使う場合の回路図です。
 * その他 : 実験中のファイルです。まともに動かない場合がほとんどです。
 
 # 説明不足すみません
