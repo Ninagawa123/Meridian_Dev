@@ -15,7 +15,7 @@ import signal
 UDP_RESV_IP="192.168.xxx.xxx" #このPCのIPアドレス
 UDP_RESV_PORT=22222 #受信ポート
 
-UDP_SEND_IP="192.168.xxx.x" #送信先のIPアドレス
+UDP_SEND_IP="192.168.xxx.x" #送信先のESP32のIPアドレス
 UDP_SEND_PORT=22224 #送信ポート
 
 MSG_SIZE = 90
