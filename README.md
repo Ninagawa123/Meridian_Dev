@@ -16,7 +16,7 @@ UnityやROSとの連携に対応しています。
 
 * 2.Teensy4.0 (サーボ制御用)
 
-* 3.ESP32devkitC (wifi通信用)
+* 3.ESP32devkitC (wifi通信用) メーカーはEspressifのものを推奨。wavesのバージョンは正常に動作せず。
 
 * 4.Meridian Boar もしくはブレッドボード,半二重回路（ICS変換基板等）
 
