@@ -66,7 +66,7 @@ https://github.com/Ninagawa123/roid1_urdf
 ### 各ファイルの説明
 
 * Meridian_Base_for_ESP32_PathThrough : ESP32に書き込むファイルです。送受信以外なにもしないパススルー方式のため高速・快適に動作します。
-　91,92行目にWifiの設定,93行目にはPCのIPアドレスを調べて入れてください。シリアルモニタに接続した状態で起動すると、ESP32自身のIPアドレスを表示しますので、rosnode_meridim_base.pyの設定に利用してください。
+　91,92行目にWifiの設定,93行目にはPCのIPアドレスを調べて入れてください。ESP32をUSBでPCに接続し、シリアルモニタを表示した状態でESP32を（再）起動すると、ESP32自身のIPアドレスを表示します。これをrosnode_meridim_base.pyの設定に利用してください。
 * Meridian_Base_for_Teensy40 : Teensy4.0に書き込むファイルです。
 * rosnode_meridim_base.py : ROSで作成するパッケージに入れるパイソンです。IPアドレスを設定してください。
 * Meridian_Base_flow_chart.txt : 主にTeensy側の処理についてのおおまかなフローチャートです。
