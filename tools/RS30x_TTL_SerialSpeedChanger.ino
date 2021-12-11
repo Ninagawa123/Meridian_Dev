@@ -163,7 +163,7 @@ void RS30x_Move (unsigned char ID, int Angle, int Speed) {
 void setup() {
   pinMode(EN_L_PIN, OUTPUT);  // デジタルPin2(EN_L_PIN)を出力に設定
   Serial.begin(115200);       // シリアルモニタのボーレート 115,200bps
-  Serial1.begin(230400);      // 元のボーレート
+  Serial1.begin(115200);      // 元のボーレート
 
   RS30x_SerialSpeed(0x09);  // 変更後のボーレート
   // 0x00:9600, 0x01:14,400, 0x02:19,200, 0x03:28.800, 0x04:38,400,
