@@ -3,6 +3,7 @@
 //RX:Teensy pin0   :Meridian Board Type.K ではICS_3
 //TX:Teensy pin1   :Meridian Board Type.K ではICS_3
 //EN:Teensy pin23  :Meridian Board Type.K ではICS_3
+//※いまうごかぬ。修正必要。
 
 /* グローバル変数定義 */
 int EN_L_PIN = 23;                // デジタルPin23を送信イネーブルピンに設定
