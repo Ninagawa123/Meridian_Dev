@@ -53,7 +53,7 @@ UnityやROSとの連携に対応しています。
 　I2CDevとMPU6050の２フォルダをTeensyduinoのlibrariesディレクトリに移して再起動。
 
 ### ESP32用として必要なライブラリ
-* ESP32DAMSPI(Teensyduinoの「ツール」→「ライブラリマネージャ」より検索＆インストール)
+* ESP32DMASPI(Teensyduinoの「ツール」→「ライブラリマネージャ」より検索＆インストール)
 
 最後に、手元の環境にROSパッケージを作成し、rosnode_meridim_base.pyを含めてください。
 
