@@ -497,7 +497,7 @@ void joypad_read() {
       if (buttonData != KRR_BUTTON_FALSE) //ボタンデータが受信できていたら
       {
         button_1 = buttonData;
-        if (monitor_joypad = 1) {
+        if (monitor_joypad) {
           Serial.print("[Button] ");
           Serial.println(button_1);//ボタンデータを表示
         }
