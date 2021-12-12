@@ -3,6 +3,7 @@
 //RX:Teensy pin0   :Meridian Board Type.K ではICS_3
 //TX:Teensy pin1   :Meridian Board Type.K ではICS_3
 //EN:Teensy pin23  :Meridian Board Type.K ではICS_3
+//参考: https://www.futaba.co.jp/product/robot/robot_download/sample_programs
 
 /* グローバル変数定義 */
 int EN_L_PIN = 23;                 // デジタルPin23を送信イネーブルピンに設定
