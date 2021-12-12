@@ -59,7 +59,6 @@ void RS30x_SerialSpeed (unsigned char ID, unsigned char dat) {
   Serial.print("cksum_culc:");
   for (int i = 2; i <= 6; i++) {
     RS30x_s_cksum = RS30x_s_cksum ^ RS30x_s_data[i]; // ID～DATAまでのXOR
-
     Serial.print(RS30x_s_cksum, HEX);
     Serial.print(",");
   }
@@ -76,7 +75,6 @@ void RS30x_SerialSpeed (unsigned char ID, unsigned char dat) {
   }
   Serial1.flush();                 // データ送信完了待ち
   Serial.println("");              // データ送信完了待ち
-
   digitalWrite(EN_L_PIN, LOW);     // 送信禁止
   delay(1000);                     //ROM書込み時間待機。
 
@@ -94,7 +92,6 @@ void RS30x_SerialSpeed (unsigned char ID, unsigned char dat) {
   Serial.print("cksum_culc:");
   for (int i = 2; i <= 6; i++) {
     RS30x_s_cksum = RS30x_s_cksum ^ RS30x_s_data[i]; // ID～DATAまでのXOR
-
     Serial.print(RS30x_s_cksum, HEX);
     Serial.print(",");
   }
@@ -110,10 +107,8 @@ void RS30x_SerialSpeed (unsigned char ID, unsigned char dat) {
     Serial.print(",");
   }
   delay(100);                     //ROM書込み時間待機。
-
   Serial1.flush();                 // データ送信完了待ち
   Serial.println();
-
   digitalWrite(EN_L_PIN, LOW);     // 送信禁止
   delay(1000);                     //ROM書込み時間待機。
 }
@@ -189,10 +184,10 @@ void setup() {
   pinMode(EN_L_PIN, OUTPUT);  // デジタルPin2(EN_L_PIN)を出力に設定
   Serial.begin(115200);       // シリアルモニタのボーレート 115,200bps
   Serial1.begin(115200);      // 元のボーレート 
-  //Serial1.begin(230400);    // 元のボーレート　//変換後にこのボーレートにて開始する
+  //Serial1.begin(230400);    // 元のボーレート　//ボーレート変更後にこのボーレートにて開始するとサーボがループで動く
   delay(1000);
-  Serial.println("Command transmission start.");
 
+  Serial.println("Command transmission start.");
   RS30x_SerialSpeed(255, 0x07); // 変更後のボーレート(サーボID(255は全サーボ),ボーレート番号（例は115,200）)
   // 0x00:9600, 0x01:14,400, 0x02:19,200, 0x03:28.800, 0x04:38,400,
   // 0x05:57,600, 0x06:76,800, 0x07:115,200, 0x08:153,600, 0x09:230,400
