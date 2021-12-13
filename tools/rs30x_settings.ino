@@ -15,7 +15,7 @@
 
 //実行すると設定した内容がシリアルモニタに表示されますのでご確認ください。
 //通信速度を変更した場合には、シリアル速度を再設定の改めてプログラムを書き込む必要があります。
-//サーボのセッティング書き換え終了後に、接続された全サーボが動作します。中心値から前後に10度だけゆっくりと動きます。
+//サーボのセッティング書き換え終了後に、接続された全サーボが動作します。中心値から前後に10度ずつゆっくりと動きます。
 
 
 /* グローバル変数定義 */
@@ -277,10 +277,11 @@ void RS30x_Move (unsigned char ID, int Angle, int Speed) {
 
 
 // ■■■■■■■■■■■■■■■ S E T U P ■■■■■■■■■■■■■■■
+// サーボの各種セッティングの設定、実行と反映
 void setup() {
   pinMode(EN_L_PIN, OUTPUT);  // デジタルPin2(EN_L_PIN)を出力に設定
-  Serial.begin(60000000);       // Teensy4.0とPCとのシリアル通信速度
-  Serial1.begin(115200);    // 現在のシリアルサーボのボーレート（デフォルトは115,200bps）
+  Serial.begin(60000000);     // Teensy4.0とPCとのシリアル通信速度
+  Serial1.begin(115200);      // 現在のシリアルサーボのボーレート（デフォルトは115,200bps）
   //Serial1.begin(230400);    // 変更後のシリアルサーボのボーレート　変換後は新しく設定したボーレートにて開始する
   delay(1000);
   Serial.println("RS303,304 servomotor's setting start.");
@@ -304,14 +305,15 @@ void setup() {
   //Serial.println("If servos dosn't start moving, Please restart Teensy after change Serial1 baud rate.");
   
   //■ 全サーボトルクオン
-  RS30x_Torque(255, 0x01);      // ID = 1(0x01) , RS30x_Torque = ON   (0x01)
+  RS30x_Torque(255, 0x01);      //  ID = 255(255は全サーボ対象,ID1ならば0x01を指定、ID15ならば0x10を指定）, RS30x_Torque = ON   (0x01)
   delay(10);
 }
 
 // ■■■■■■■■■■■■■■■ M A I N ■■■■■■■■■■■■■■■
+// サーボの各種セッティングの設定、実行と反映
 void loop() {
-  RS30x_Move(255, 100, RS30x_speed); // ID = 1 , GoalPosition = 30.0deg(300) , Time = 1.0sec(100)
+  RS30x_Move(255, 100, RS30x_speed);  // ID = 255(全サーボ) , GoalPosition = 10.0deg(100) , Time = 1.0sec(100)
   delay(1000);
-  RS30x_Move(255, -100, RS30x_speed); // ID = 1 , GoalPosition = -30.0deg(300) , Time = 1.0sec(100)
+  RS30x_Move(255, -100, RS30x_speed); //  ID = 255(全サーボ) ,GoalPosition = -10.0deg(-100) , Time = 1.0sec(100)
   delay(1000);
 }
