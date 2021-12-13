@@ -1,4 +1,6 @@
-//FUTABA RS30x TTL SerialSetting for Teensy4.0
+//FUTABA RS30x TTL SerialSetting for Teensy4.0 + Meridian Board Type.K ver1.2
+//参考)https://www.futaba.co.jp/product/robot/robot_download/sample_programs
+//
 //Pin Assign
 //RX:Teensy pin0   :Meridian Board Type.K ではICS_3
 //TX:Teensy pin1   :Meridian Board Type.K ではICS_3
