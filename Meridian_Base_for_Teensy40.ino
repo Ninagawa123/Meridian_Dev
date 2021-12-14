@@ -1,4 +1,4 @@
-//Meridian_base_211123_for_Teensy
+//Meridian_base_211214_for_Teensy
 //This code is for Teensy 4.0
 
 /*
@@ -117,12 +117,12 @@
 
 //[S-3] 各種設定 #DEFINE ---------------------------------
 //マウント有無とピンアサイン (S-3-1) ---------------------------------
-#define ESP32_MOUNT 0 //0:なし(SPI通信およびUDP通信を実施しない)、1:あり
+#define ESP32_MOUNT 1 //0:なし(SPI通信およびUDP通信を実施しない)、1:あり
 #define SD_MOUNT 1 //SDカードリーダーのありなし。MeridianBoard Type.Kは有り
 #define CHIPSELECT_SD 9 //SDカードSPI通信用のChipSelectのピン番号
-#define IMU_MOUNT 1 //IMUの搭載状況 0=off, 1=MPU6050, ...
+#define IMU_MOUNT 0 //IMUの搭載状況 0=off, 1=MPU6050, ...
 #define IMU_FREQ 10 //IMUのセンサの読み取り間隔(ms)
-#define JOYPAD_MOUNT 3 //ジョイパッドの搭載 0:なし、Wiimote:1, Wiimote+:2, KRC-5FH:3 (※KRC-5FH:3のみ実装済,MeridianBoardではICS_R系に接続)
+#define JOYPAD_MOUNT 0 //ジョイパッドの搭載 0:なし、Wiimote:1, Wiimote+:2, KRC-5FH:3 (※KRC-5FH:3のみ実装済,MeridianBoardではICS_R系に接続)
 #define JOYPAD_FRAME 4 //上記JOYPADのデータを読みに行くフレーム間隔 (※KRC-5FHでは4推奨)
 #define ICS3_MOUNT 0 //半二重サーボ信号の3系のありなし
 
@@ -130,9 +130,9 @@
 #define MSG_SIZE 90 //Meridim配列の長さ設定（デフォルトは90）
 #define ERR_LED 2 //LED用 処理が時間内に収まっていない場合に点灯
 #define SERIAL_PC 60000000 //PCとのシリアル速度（モニタリング表示用）
-#define EN_L_PIN 6 //ICSサーボ信号の左系のENピン番号
-#define EN_R_PIN 5 //ICSサーボ信号の右系のENピン番号
-#define EN_3_PIN 23 //半二重サーボ信号の3系のENピン番号
+#define EN_L_PIN 6 //ICSサーボ信号の左系のENピン番号（固定）
+#define EN_R_PIN 5 //ICSサーボ信号の右系のENピン番号（固定）
+#define EN_3_PIN 23 //半二重サーボ信号の3系のENピン番号（固定）
 #define BAUDRATE 1250000 //ICSサーボの通信速度1.25M
 #define TIMEOUT 1000 //ICS返信待ちのタイムアウト時間。通信できてないか確認する場合には1000ぐらいに設定するとよい。
 
