@@ -17,9 +17,9 @@
 //通信速度を変更した場合には、シリアル速度を再設定の改めてプログラムを書き込む必要があります。
 //サーボのセッティング書き換え終了後に、新しく設定したIDのサーボを動作させます。中心値から前後に10度ずつゆっくりと動きます。
 
-// ■■■■■■■■■■■■■■■ IDの設定（設定変更はここだけ変更して書き込み→実行すればOK） ■■■■■■■■■■■■■■■
+// ■■■■■■■■■■■■■■■ IDの設定&使い方（設定変更はここだけ変更して書き込み→実行すればOK） ■■■■■■■■■■■■■■■
 //サーボのシリアル速度のボーレート設定
-#define BAUDRATE 115200 //デフォルトは115,200bps、Meridianの推奨は230,400bps
+#define BAUDRATE 230400 //デフォルトは115,200bps、Meridianの推奨は230,400bps
 
 //変更前のID
 #define OLD_ID 255 //変更前のID。255は全てのIDを対象とするので、サーボを一つだけ接続している場合は無変更でOK。
@@ -249,8 +249,12 @@ void setup() {
 // ■■■■■■■■■■■■■■■ M A I N ■■■■■■■■■■■■■■■
 // サーボの各種セッティングの設定、実行と反映
 void loop() {
-  RS30x_Move(NEW_ID, 100, RS30x_speed);  // ID = 255(全サーボ) , GoalPosition = 10.0deg(100) , Time = 1.0sec(100)
+  RS30x_Move(255, 100, RS30x_speed); // ID=255は全サーボ , GoalPosition = 10.0deg(100) , Time = 1.0sec(RS30x_speed=100)
   delay(1000);
-  RS30x_Move(NEW_ID, -100, RS30x_speed); //  ID = 255(全サーボ) ,GoalPosition = -10.0deg(-100) , Time = 1.0sec(100)
+  RS30x_Move(255, 60, 20); // ID=255は全サーボ , GoalPosition = 6.0deg(60) , Time = 0.2sec(20)
+  delay(500);
+  RS30x_Move(255, 100, 20); // ID=255は全サーボ , GoalPosition = 10.0deg(100) , Time = 0.2sec(20)
+  delay(500);
+  RS30x_Move(255, -100, RS30x_speed); // ID=255は全サーボ , GoalPosition = -10.0deg(-100) , Time = 1.0sec(RS30x_speed=100)
   delay(1000);
 }
