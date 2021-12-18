@@ -1,4 +1,4 @@
-//FUTABA RS30x TTL SerialSetting for Teensy4.0 + Meridian Board Type.K ver1.2
+//FUTABA RS30x TTL SerialSetting for Teensy4.0 + Meridian Board Type.K ver1.2 2021.12.19
 //参考)https://www.futaba.co.jp/product/robot/robot_download/sample_programs
 //
 //Pin Assign
@@ -15,11 +15,39 @@
 
 //実行すると設定した内容がシリアルモニタに表示されますのでご確認ください。
 //通信速度を変更した場合には、シリアル速度を再設定の改めてプログラムを書き込む必要があります。
-//サーボのセッティング書き換え終了後に、接続された全サーボが動作します。中心値から前後に10度ずつゆっくりと動きます。
+//サーボのセッティング書き換え終了後に、接続された全サーボが動作します。中心値から前後に10度だけゆっくりと動きます。
+
+//** 使い方 **
+// * 説明ごちゃごちゃしていますがとりあえずの利用方法です。
+//まず、Meridian Board Type.KのICS_3端子に、FUTABAサーボ RS303もしくはRS304を接続します。
+//下記の設定の255の数値は、全サーボIDを指定する数値です。設定の際には１個ずつ接続して行うと確実です。
+//
+//【通信速度の変更】
+//340行目のSerial1.begin(115200)のコメントアウトを解除します。数値は対象のサーボの元の通信速度です。
+//341行目のSerial1.begin(230400)はコメントアウトします。
+//350行目のRS30x_SetSerialSpeed(255, 0x09);のコメントアウトを解除します。
+// 2番目の引数が、設定する通信速度になります。0x09は最高速度の230,400bpsです。
+//355行目のRS30x_SetReplayDelay(255, 0x00);のコメントアウトを解除します。
+// 2番目の引数が、ディレイ速度です。0x00が最速です。
+//358行目のRS30x_Reverse (255, 0)がコメントアウトされていることを確認します。
+//Teensy4.0にスクリプトを書き込むと、書き込み完了後にサーボの設定が行われます。
+//ただし通信速度を変えているので、サーボは動かなくなります。
+//
+//設定完了後、340行目をコメントアウトし、341行目のコメントアウトを解除し、再度書き込みます。
+//新しい通信速度で、サーボが起動します。
+//サーボは原点から前後10度ずつ回転します。順方向の頂点でクックと動きます。
+
+//【通信速度の変更】
+//358行目のRS30x_Reverse (255, 0)のコメントアウトを解除します。
+// 2番目の引数が、サーボ回転方向の指定値の正負に対する順逆を示します。0x00=順、 0x01=逆
+//340-341行目のコメントアウトや数値を変更し、現在のサーボ通信速度を設定します。
+//設定完了後、サーボが起動します。
+//サーボは原点から前後10度ずつ回転します。順方向の頂点でクックと動きます。
+
 
 
 /* グローバル変数定義 */
-int EN_L_PIN = 23;                 // デジタルPin23を送信イネーブルピンに設定
+int EN_3_PIN = 23;                 // デジタルPin23を送信イネーブルピンに設定
 int RS30x_speed = 100;//サーボ速度指定
 
 // ■■■■■■■■■■■■■■■ RS30x 通 信 速 度 設 定 ■■■■■■■■■■■■■■■
@@ -44,12 +72,12 @@ void RS30x_SetSerialSpeed (unsigned char ID, unsigned char dat) {
   RS30x_s_data[8] = RS30x_s_cksum; // Sum
 
   // パケットデータ送信
-  digitalWrite(EN_L_PIN, HIGH);    // 送信許可
+  digitalWrite(EN_3_PIN, HIGH);    // 送信許可
   for (int i = 0; i <= 8; i++) {
     Serial1.write(RS30x_s_data[i]);
   }
   Serial1.flush();                 // データ送信完了待ち
-  digitalWrite(EN_L_PIN, LOW);     // 送信禁止
+  digitalWrite(EN_3_PIN, LOW);     // 送信禁止
 
   String tmp = "";
   switch (dat) {
@@ -111,13 +139,13 @@ void RS30x_RomWrite (unsigned char ID) {
   RS30x_s_data[7] = RS30x_s_cksum; // Sum
 
   // パケットデータ送信
-  digitalWrite(EN_L_PIN, HIGH);    // 送信許可
+  digitalWrite(EN_3_PIN, HIGH);    // 送信許可
   for (int i = 0; i <= 7; i++) {
     Serial1.write(RS30x_s_data[i]);
   }
   delay(100);//ROM書込み時間待機。
   Serial1.flush();                 // データ送信完了待ち
-  digitalWrite(EN_L_PIN, LOW);     // 送信禁止
+  digitalWrite(EN_3_PIN, LOW);     // 送信禁止
   delay(100);
 
   Serial.print("Write data to ROM to ");
@@ -153,12 +181,12 @@ void RS30x_Reboot (unsigned char ID) {
   RS30x_s_data[7] = RS30x_s_cksum; // Sum
 
   // パケットデータ送信
-  digitalWrite(EN_L_PIN, HIGH);    // 送信許可
+  digitalWrite(EN_3_PIN, HIGH);    // 送信許可
   for (int i = 0; i <= 7; i++) {
     Serial1.write(RS30x_s_data[i]);
   }
   Serial1.flush();                 // データ送信完了待ち
-  digitalWrite(EN_L_PIN, LOW);     // 送信禁止
+  digitalWrite(EN_3_PIN, LOW);     // 送信禁止
 
   Serial.print("Reboot ");
   if (ID == 255) {
@@ -192,12 +220,12 @@ void RS30x_SetReplayDelay (unsigned char ID, unsigned char dat) {
   RS30x_s_data[8] = RS30x_s_cksum; // Sum
 
   // パケットデータ送信
-  digitalWrite(EN_L_PIN, HIGH);    // 送信許可
+  digitalWrite(EN_3_PIN, HIGH);    // 送信許可
   for (int i = 0; i <= 8; i++) {
     Serial1.write(RS30x_s_data[i]);
   }
   Serial1.flush();                 // データ送信完了待ち
-  digitalWrite(EN_L_PIN, LOW);     // 送信禁止
+  digitalWrite(EN_3_PIN, LOW);     // 送信禁止
 
   Serial.print("Set ID ");
   if (ID == 255) {
@@ -208,6 +236,36 @@ void RS30x_SetReplayDelay (unsigned char ID, unsigned char dat) {
   Serial.print(" RS30x servo's REPLY DELAY to ");
   Serial.print(short(dat) * 0.05 + 0.1, 2);
   Serial.println(" ms.");
+}
+
+// ■■■■■■■■■■■■■■■ RS30x サ ー ボ リ バ ー ス 設 定 ■■■■■■■■■■■■■■■
+void RS30x_Reverse (unsigned char ID, unsigned char dat) { //dat 0x00=Nomal 0x01=Reverse
+  unsigned char RS30x_s_data[9];   // 送信データバッファ [9byte]
+  unsigned char RS30x_s_cksum = 0; // チェックサム計算用変数
+
+  // パケットデータ生成
+  RS30x_s_data[0] = 0xFA;          // Header
+  RS30x_s_data[1] = 0xAF;          // Header
+  RS30x_s_data[2] = ID;            // ID
+  RS30x_s_data[3] = 0x00;          // Flags
+  RS30x_s_data[4] = 0x05;          // Address
+  RS30x_s_data[5] = 0x01;          // Length
+  RS30x_s_data[6] = 0x01;          // Count
+  RS30x_s_data[7] = dat;          // dat
+
+  // チェックサム計算
+  for (int i = 2; i <= 7; i++) {
+    RS30x_s_cksum = RS30x_s_cksum ^ RS30x_s_data[i]; // ID～datまでのXOR
+  }
+  RS30x_s_data[8] = RS30x_s_cksum; // Sum
+
+  // パケットデータ送信
+  digitalWrite(EN_3_PIN, HIGH);    // 送信許可
+  for (int i = 0; i <= 8; i++) {
+    Serial1.write(RS30x_s_data[i]);
+  }
+  Serial1.flush();                 // データ送信完了待ち
+  digitalWrite(EN_3_PIN, LOW);     // 送信禁止
 }
 
 // ■■■■■■■■■■■■■■■ RS30x サ ー ボ ト ル ク 設 定 ■■■■■■■■■■■■■■■
@@ -232,12 +290,12 @@ void RS30x_Torque (unsigned char ID, unsigned char dat) {
   RS30x_s_data[8] = RS30x_s_cksum; // Sum
 
   // パケットデータ送信
-  digitalWrite(EN_L_PIN, HIGH);    // 送信許可
+  digitalWrite(EN_3_PIN, HIGH);    // 送信許可
   for (int i = 0; i <= 8; i++) {
     Serial1.write(RS30x_s_data[i]);
   }
   Serial1.flush();                 // データ送信完了待ち
-  digitalWrite(EN_L_PIN, LOW);     // 送信禁止
+  digitalWrite(EN_3_PIN, LOW);     // 送信禁止
 }
 
 
@@ -267,21 +325,20 @@ void RS30x_Move (unsigned char ID, int Angle, int Speed) {
   RS30x_s_data[11] = RS30x_s_cksum; // Sum
 
   // パケットデータ送信
-  digitalWrite(EN_L_PIN, HIGH);     // 送信許可
+  digitalWrite(EN_3_PIN, HIGH);     // 送信許可
   for (int i = 0; i <= 11; i++) {
     Serial1.write(RS30x_s_data[i]);
   }
   Serial1.flush();                  // データ送信完了待ち
-  digitalWrite(EN_L_PIN, LOW);      // 送信禁止
+  digitalWrite(EN_3_PIN, LOW);      // 送信禁止
 }
 
 
 // ■■■■■■■■■■■■■■■ S E T U P ■■■■■■■■■■■■■■■
-// サーボの各種セッティングの設定、実行と反映
 void setup() {
-  pinMode(EN_L_PIN, OUTPUT);  // デジタルPin2(EN_L_PIN)を出力に設定
-  Serial.begin(60000000);     // Teensy4.0とPCとのシリアル通信速度
-  Serial1.begin(115200);      // 現在のシリアルサーボのボーレート（デフォルトは115,200bps）
+  pinMode(EN_3_PIN, OUTPUT);  // デジタルPin2(EN_3_PIN)を出力に設定
+  Serial.begin(60000000);       // Teensy4.0とPCとのシリアル通信速度
+  Serial1.begin(115200);    // 現在のシリアルサーボのボーレート（デフォルトは115,200bps）
   //Serial1.begin(230400);    // 変更後のシリアルサーボのボーレート　変換後は新しく設定したボーレートにて開始する
   delay(1000);
   Serial.println("RS303,304 servomotor's setting start.");
@@ -297,23 +354,29 @@ void setup() {
   //■ リターンディレイの設定 (サーボID(255は全サーボ), 返信ディレイ 100μs + 数値*0.01（例は0.1ms))
   //RS30x_SetReplayDelay(255, 0x00);//※※※※リターンディレイの変更にはこの行をコメントアウト※※※※
 
+  //■ リバースの設定 (サーボID(255は全サーボ), 順逆 0x00=順、 0x01=逆)
+  //RS30x_Reverse (255, 0);
+
   //■ ROM書き込みと再起動　※下記の２行を設定の際は必ず必要になります
-  //RS30x_RomWrite(255);//※※※※何らかの設定を変更する際はこの行をコメントアウト※※※※
-  //RS30x_Reboot(255);//※※※※何らかの設定を変更する際はこの行をコメントアウト※※※※
+  RS30x_RomWrite(255);//※※※※何らかの設定を変更する際はこの行をコメントアウト※※※※
+  RS30x_Reboot(255);//※※※※何らかの設定を変更する際はこの行をコメントアウト※※※※
 
   delay(100);
   //Serial.println("If servos dosn't start moving, Please restart Teensy after change Serial1 baud rate.");
-  
+
   //■ 全サーボトルクオン
-  RS30x_Torque(255, 0x01);      //  ID = 255(255は全サーボ対象,ID1ならば0x01を指定、ID15ならば0x10を指定）, RS30x_Torque = ON   (0x01)
+  RS30x_Torque(255, 0x01);      // ID = 1(0x01) , RS30x_Torque = ON   (0x01)
   delay(10);
 }
 
 // ■■■■■■■■■■■■■■■ M A I N ■■■■■■■■■■■■■■■
-// サーボの各種セッティングの設定、実行と反映
 void loop() {
-  RS30x_Move(255, 100, RS30x_speed);  // ID = 255(全サーボ) , GoalPosition = 10.0deg(100) , Time = 1.0sec(100)
+  RS30x_Move(255, 100, RS30x_speed); // ID=255は全サーボ , GoalPosition = 10.0deg(100) , Time = 1.0sec(RS30x_speed=100)
   delay(1000);
-  RS30x_Move(255, -100, RS30x_speed); //  ID = 255(全サーボ) ,GoalPosition = -10.0deg(-100) , Time = 1.0sec(100)
+  RS30x_Move(255, 60, 20); // ID=255は全サーボ , GoalPosition = 6.0deg(60) , Time = 0.2sec(20)
+  delay(500);
+  RS30x_Move(255, 100, 20); // ID=255は全サーボ , GoalPosition = 10.0deg(100) , Time = 0.2sec(20)
+  delay(500);
+  RS30x_Move(255, -100, RS30x_speed); // ID=255は全サーボ , GoalPosition = -10.0deg(-100) , Time = 1.0sec(RS30x_speed=100)
   delay(1000);
 }
