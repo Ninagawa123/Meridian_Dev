@@ -1,4 +1,4 @@
-//Meridian_base_211214_for_Teensy
+//Meridian_base_for_Teensy_2021.01.08
 //This code is for Teensy 4.0
 
 /*
@@ -33,7 +33,6 @@
   [15] RX3            -> ICS_Right_TX
   [14] TX3            -> ICS_Right_RX
   [13] SCK(CRX1)      -> SPI/SD_SCK (ESP32[14]) & SD_CLK (SD[5])
-
   -------------------------------------------------------------------------
   ---- サーボIDとロボット部位、軸との対応表 [S-1-1] ----------------------------
   -------------------------------------------------------------------------
@@ -52,7 +51,6 @@
   [L08] 左膝ピッチ
   [L09] 左足首ピッチ
   [L10] 左足首ロール
-
   ＜ICS_Right_Upper SIO5,SIO6＞
   ID    Parts-Axis
   [R00] 頭ヨー
@@ -68,7 +66,6 @@
   [R08] 右膝ピッチ
   [R09] 右足首ピッチ
   [R10] 右足首ロール
-
   -------------------------------------------------------------------------
   ---- Meridim配列 一覧表 [S-1-2] ------------------------------------------
   -------------------------------------------------------------------------
@@ -111,7 +108,7 @@
 #include <SPI.h> //SDカード用のライブラリ導入
 #include <SD.h> //SDカード用のライブラリ導入
 #include <TsyDMASPI.h> //SPI Master用のライブラリを導入
-#include <MadgwickAHRS.h> //MPU6050のライブラリ導入
+//#include <MadgwickAHRS.h> //MPU6050のライブラリ導入
 #include "MPU6050_6Axis_MotionApps20.h" //MPU6050のライブラリ導入2
 #include <IcsHardSerialClass.h> //ICSサーボのライブラリ導入
 
@@ -120,7 +117,7 @@
 #define ESP32_MOUNT 1 //0:なし(SPI通信およびUDP通信を実施しない)、1:あり
 #define SD_MOUNT 1 //SDカードリーダーのありなし。MeridianBoard Type.Kは有り
 #define CHIPSELECT_SD 9 //SDカードSPI通信用のChipSelectのピン番号
-#define IMU_MOUNT 0 //IMUの搭載状況 0=off, 1=MPU6050, ...
+#define IMU_MOUNT 1 //IMUの搭載状況 0=off, 1=MPU6050, ...
 #define IMU_FREQ 10 //IMUのセンサの読み取り間隔(ms)
 #define JOYPAD_MOUNT 0 //ジョイパッドの搭載 0:なし、Wiimote:1, Wiimote+:2, KRC-5FH:3 (※KRC-5FH:3のみ実装済,MeridianBoardではICS_R系に接続)
 #define JOYPAD_FRAME 4 //上記JOYPADのデータを読みに行くフレーム間隔 (※KRC-5FHでは4推奨)
@@ -183,6 +180,11 @@ Quaternion q;           // [w, x, y, z]         quaternion container
 VectorFloat gravity;    // [x, y, z]            gravity vector
 float ypr[3];           // [roll, pitch, yaw]   roll/pitch/yaw container and gravity vector
 float ROLL, PITCH, YAW, YAW_ZERO;
+float mpu_data[16] ;//mpudata acc_x,y,z,gyro_x,y,z,mag_x,y,z,gr_x,y,z,rpy_r,p,y,temp
+VectorInt16 aa;         // [x, y, z]            加速度センサの測定値
+VectorInt16 gyro;       // [x, y, z]            角速度センサの測定値
+VectorInt16 mag;        // [x, y, z]            磁力センサの測定値
+long temperature;         // センサの温度測定値
 
 //ICSサーボのインスタンス設定
 IcsHardSerialClass krs_L(&Serial2, EN_L_PIN, BAUDRATE, TIMEOUT);
@@ -220,16 +222,16 @@ bool monitor_src = 0; //Teensyでのシリアル表示:送信ソースデータ
 bool monitor_send = 0; //Teensyでのシリアル表示:送信データ
 bool monitor_resv = 0; //Teensyでのシリアル表示:受信データ
 bool monitor_resv_check = 1; //Teensyでのシリアル表示:受信成功の可否
-bool monitor_resv_error = 1; //Teensyでのシリアル表示:受信エラー率
+bool monitor_resv_error = 0; //Teensyでのシリアル表示:受信エラー率
 bool monitor_all_error = 0; //Teensyでのシリアル表示:全経路の受信エラー率
 bool monitor_rpy = 0; //Teensyでのシリアル表示:IMUからのrpy換算値
-bool monitor_joypad = 1; //Teensyでのシリアル表示:リモコンのデータ
+bool monitor_joypad = 0; //Teensyでのシリアル表示:リモコンのデータ
 
 void setup() {
   //-------------------------------------------------------------------------
   //---- サ ー ボ 設 定 [S-5] ------------------------------------------------
   //-------------------------------------------------------------------------
-  //各サーボのマウントありなし（1:サーボあり、2:サーボなし）
+  //各サーボのマウントありなし（1:サーボあり、0:サーボなし）
   idl_mt[0]  = 1; //腰ヨー
   idl_mt[1]  = 1; //左肩ピッチ
   idl_mt[2]  = 1; //左肩ロール
@@ -451,6 +453,36 @@ void getYawPitchRoll() {
     PITCH = ypr[1] * 180 / M_PI;
     YAW = (ypr[0] * 180 / M_PI) - YAW_ZERO;
 
+    //加速度の値
+    mpu.dmpGetAccel(&aa, fifoBuffer);
+    mpu_data[0] = (float)aa.x;
+    mpu_data[1] = (float)aa.y;
+    mpu_data[2] = (float)aa.z;
+
+    //ジャイロの値
+    mpu.dmpGetGyro(&gyro, fifoBuffer);
+    mpu_data[3] = (float)gyro.x;
+    mpu_data[4] = (float)gyro.y;
+    mpu_data[5] = (float)gyro.z;
+
+    //磁力センサの値
+    mpu_data[6] = (float)mag.x;
+    mpu_data[7] = (float)mag.y;
+    mpu_data[8] = (float)mag.z;
+    
+    //重力DMP推定値
+    mpu_data[9] = gravity.x;
+    mpu_data[10] = gravity.y;
+    mpu_data[11] = gravity.z;
+
+    //相対方向DMP推定値
+    mpu_data[12] = ypr[2] * 180 / M_PI;
+    mpu_data[13] = ypr[1] * 180 / M_PI;
+    mpu_data[14] = (ypr[0] * 180 / M_PI) - YAW_ZERO;
+
+    //温度
+    mpu_data[15] = 0;//fifoBufferからの温度取得方法が今のところ不明。
+
     if (monitor_rpy == 1) { //Teensyでのシリアル表示:IMUからのrpy換算値
       Serial.print("[Roll, Pitch, Yaw] ");
       Serial.print(ROLL);
@@ -608,19 +640,20 @@ void loop() {
   //s_merdim.sval[1] = 10 ;//(移動時間）
 
   // [5-3] センサー値を配列に格納
-  //s_merdim.sval[2] = (short)acc_x * 100 ; //IMU_gyro_x
-  //s_merdim.sval[3] = (short)acc_y * 100 ; //IMU_gyro_y
-  //s_merdim.sval[4] = (short)acc_z * 100 ; //IMU_gyro_z
-  //s_merdim.sval[5] = (short)gyro_x * 100 ; //IMU_acc_x
-  //s_merdim.sval[6] = (short)gyro_y * 100 ; //IMU_acc_y
-  //s_merdim.sval[7] = (short)gyro_z * 100 ; //IMU_acc_z
-  s_merdim.sval[8] = 0 ;//IMU
-  s_merdim.sval[9] = 0 ;//IMU
-  s_merdim.sval[10] = 0 ;//IMU
-  //s_merdim.sval[11] = (short)temp ;//IMU
-  s_merdim.sval[12] = float2HFshort(ROLL) ;//Madgwick_roll
-  s_merdim.sval[13] = float2HFshort(PITCH)  ;//Madgwick_pitch
-  s_merdim.sval[14] = float2HFshort(YAW) ;//Madgwick_yaw
+  s_merdim.sval[2] = float2HFshort(mpu_data[0]); //IMU_acc_x
+  s_merdim.sval[3] = float2HFshort(mpu_data[1]); //IMU_acc_y
+  s_merdim.sval[4] = float2HFshort(mpu_data[2]); //IMU_acc_z
+  s_merdim.sval[5] = float2HFshort(mpu_data[3]); //IMU_gyro_x
+  s_merdim.sval[6] = float2HFshort(mpu_data[4]); //IMU_gyro_y
+  s_merdim.sval[7] = float2HFshort(mpu_data[5]); //IMU_gyro_z
+  s_merdim.sval[8] = float2HFshort(mpu_data[6]); //IMU_mag_x
+  s_merdim.sval[9] = float2HFshort(mpu_data[7]); //IMU_mag_y
+  s_merdim.sval[10] = float2HFshort(mpu_data[8]);//IMU_mag_z
+  s_merdim.sval[11] = float2HFshort(mpu_data[9]);//IMU_
+  s_merdim.sval[12] = float2HFshort(ROLL);       //DMP_roll
+  s_merdim.sval[13] = float2HFshort(PITCH);      //DMP_pitch
+  s_merdim.sval[14] = float2HFshort(YAW);        //DMP_yaw
+  s_merdim.sval[15] = float2HFshort(mpu_data[15]);//tempreature
 
   // [5-4] サーボIDごとにの現在位置もしくは計算結果を配列に格納
   for (int i = 0; i < 15; i++) {
