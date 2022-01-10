@@ -1,0 +1,94 @@
+#include <PS4Controller.h>
+
+void setup() {
+  Serial.begin(2000000);
+  PS4.begin("XX:XX:XX:XX:XX:XX");//ESP32のMACアドレスを調べ、こことPS4コントローラーに書き込む
+  Serial.println("Ready.");
+}
+
+//コントローラー用変数
+unsigned short pad_btn = 0;
+short pad_stick_R_x = 0;
+short pad_stick_R_y = 0;
+short pad_stick_L_x = 0;
+short pad_stick_L_y = 0;
+short pad_R2_val = 0;
+short pad_L2_val = 0;
+long pad_btn_disp = 65536;
+
+//void ps4
+
+void loop() {
+  // Below has all accessible outputs from the controller
+  if (PS4.isConnected()) {
+    pad_btn = 0;
+    if (PS4.Right())    pad_btn |= (B00000000 * 256) + B00100000;
+    if (PS4.Down())     pad_btn |= (B00000000 * 256) + B01000000;
+    if (PS4.Up())       pad_btn |= (B00000000 * 256) + B00010000;
+    if (PS4.Left())     pad_btn |= (B00000000 * 256) + B10000000;
+
+    if (PS4.Square())   pad_btn |= (B10000000 * 256) + B00000000;
+    if (PS4.Cross())    pad_btn |= (B01000000 * 256) + B00000000;
+    if (PS4.Circle())   pad_btn |= (B00100000 * 256) + B00000000;
+    if (PS4.Triangle()) pad_btn |= (B00010000 * 256) + B00000000;
+
+    if (PS4.UpRight())  pad_btn |= (B00000000 * 256) + B00110000;
+    if (PS4.DownRight())pad_btn |= (B00000000 * 256) + B01100000;
+    if (PS4.UpLeft())   pad_btn |= (B00000000 * 256) + B10010000;
+    if (PS4.DownLeft()) pad_btn |= (B00000000 * 256) + B11000000;
+
+    if (PS4.L1())       pad_btn |= (B00000100 * 256) + B00000000;
+    if (PS4.R1())       pad_btn |= (B00001000 * 256) + B00000000;
+
+    if (PS4.Share())    pad_btn |= (B00000000 * 256) + B00000001;
+    if (PS4.Options())  pad_btn |= (B00000000 * 256) + B00001000;
+    if (PS4.L3())       pad_btn |= (B00000000 * 256) + B00000100;
+    if (PS4.R3())       pad_btn |= (B00000000 * 256) + B00000010;
+
+    if (PS4.PSButton()) pad_btn |= (B00000000 * 256) + B01010000;//same as up & down
+    if (PS4.Touchpad()) pad_btn |= (B00000000 * 256) + B00101000;//same as left & right
+
+    if (PS4.L2()) {
+      pad_btn |= (0x00000001 * 256) + B00000000;
+      pad_L2_val = PS4.L2Value();
+    }
+    if (PS4.R2()) {
+      pad_btn |= 512;//(0x00000010 * 256) + B00000000;
+      pad_R2_val = PS4.R2Value();
+    }
+
+    if (PS4.LStickX()) {
+      pad_stick_L_x = PS4.LStickX();
+    }
+    if (PS4.LStickY()) {
+      pad_stick_L_y = PS4.LStickY();
+    }
+    if (PS4.RStickX()) {
+      pad_stick_R_x = PS4.RStickX();
+    }
+    if (PS4.RStickY()) {
+      pad_stick_R_y = PS4.RStickY();
+    }
+
+    //if (PS4.Charging()) Serial.println("The controller is charging");
+    //if (PS4.Audio()) Serial.println("The controller has headphones attached");
+    //if (PS4.Mic()) Serial.println("The controller has a mic attached");
+    //Serial.printf("Battery Level : %d\n", PS4.Battery());
+
+    pad_btn_disp = pad_btn+65536;
+    Serial.print(pad_btn_disp, BIN);
+    Serial.print(", ");
+    Serial.print(pad_stick_L_x);
+    Serial.print(", ");
+    Serial.print(pad_stick_L_y);
+    Serial.print(", ");
+    Serial.print(pad_stick_R_x);
+    Serial.print(", ");
+    Serial.print(pad_stick_R_y);
+    Serial.print(", ");
+    Serial.print(pad_L2_val);
+    Serial.print(", ");
+    Serial.println(pad_R2_val);
+    delay(10);
+  }
+}
