@@ -1,3 +1,10 @@
+//https://github.com/aed3/PS4-esp32 ライブラリと接続法補
+//1 上記を参考にライブラリを入れる（）
+//2 ESP32/Meridian_core_for_ESP32_PassThroughでESP32のMACアドレスを調べる（起動時にシリアルモニタで確認可能）
+//　 https://github.com/Ninagawa123/Meridian_core/tree/main/ESP32/Meridian_core_for_ESP32_PassThrough
+//3 sixaxispairer でPS4コントローラに上記で調べたESP32のMACアドレスを書き込む
+//4 ESP32に下記を書き込んでテスト。シリアル速度は2000000
+
 #include <PS4Controller.h>
 
 void setup() {
