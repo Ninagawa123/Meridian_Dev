@@ -89,7 +89,7 @@ def main():
                     error_count += 1
                 signal.signal(signal.SIGINT, signal.SIG_DFL)
                 #print("COUNT:",loop_count," ERROR:",error_count," ErrorRate:",'{:.02f}'.format(error_count/loop_count*100),"%")
-                print("PAD:",r_short_data_disp[80])
+                #print("PAD:",r_short_data_disp[80])
 
                 #ここでデータを作成する
                 s_short_data=[]
@@ -168,12 +168,12 @@ def dpgrun():
     with dpg.window(label="Command", width=335, height=170,pos=[260,185]):
         dpg.add_text("Control Pad Monitor", pos=[10,100])
         dpg.add_text("button",tag="pad_button", pos=[170,100])
-        dpg.add_slider_int(default_value=0, tag="pad_L1x", label="L1x",max_value=127,min_value=-127,pos=[10,120], width=40)
-        dpg.add_slider_int(default_value=0, tag="pad_L1y", label="L1y",max_value=127,min_value=-127,pos=[90,120], width=40)
-        dpg.add_slider_int(default_value=0, tag="pad_R1x", label="R1x",max_value=127,min_value=-127,pos=[170,120], width=40)
-        dpg.add_slider_int(default_value=0, tag="pad_R1y", label="R1y",max_value=127,min_value=-127,pos=[250,120], width=40)
-        dpg.add_slider_int(default_value=0, tag="pad_L2v", label="L2v",max_value=127,min_value=-127,pos=[90,140], width=40)
-        dpg.add_slider_int(default_value=0, tag="pad_R2v", label="R2v",max_value=127,min_value=-127,pos=[170,140], width=40)
+        dpg.add_slider_int(default_value=0, tag="pad_Lx", label="Lx",max_value=127,min_value=-127, pos=[10,120], width=40)
+        dpg.add_slider_int(default_value=0, tag="pad_Ly", label="Ly",max_value=127,min_value=-127, pos=[90,120], width=40)
+        dpg.add_slider_int(default_value=0, tag="pad_Rx", label="Rx",max_value=127,min_value=-127, pos=[170,120], width=40)
+        dpg.add_slider_int(default_value=0, tag="pad_Ry", label="Ry",max_value=127,min_value=-127, pos=[250,120], width=40)
+        dpg.add_slider_int(default_value=0, tag="pad_L2v", label="L2v",max_value=255,min_value=0, pos=[90,140], width=40)
+        dpg.add_slider_int(default_value=0, tag="pad_R2v", label="R2v",max_value=255,min_value=0, pos=[170,140], width=40)
     dpg.setup_dearpygui()
     dpg.show_viewport()
 
@@ -190,12 +190,23 @@ def dpgrun():
             if i < 13:
                 dpg.set_value("mpu"+str(i),idsensor)
         dpg.set_value("pad_button", str(r_short_data_disp[80]))
-        dpg.set_value("pad_L1x", -(r_short_data_disp[81]>>8&0x00ff & 0b10000000) | (r_short_data_disp[81]>>8&0x00ff & 0b01111111))
-        dpg.set_value("pad_L1y", -(r_short_data_disp[81]&0x00ff & 0b10000000) | (r_short_data_disp[81]&0x00ff & 0b01111111))
-        dpg.set_value("pad_R1x", -(r_short_data_disp[82]>>8&0x000ff & 0b010000000) | (r_short_data_disp[82]>>8&0x000ff & 0b001111111))
-        dpg.set_value("pad_R1y", -(r_short_data_disp[82]&0x00ff & 0b10000000) | (r_short_data_disp[82]&0x00ff & 0b01111111))
-        dpg.set_value("pad_L2v", -(r_short_data_disp[83]>>8&0x00ff & 0b10000000) | (r_short_data_disp[83]>>8&0x00ff & 0b01111111))
-        dpg.set_value("pad_R2v", -(r_short_data_disp[83]&0x00ff & 0b10000000) | (r_short_data_disp[83]&0x00ff & 0b01111111))
+        dpg.set_value("pad_Lx",-(r_short_data_disp[81]>>8&0x00ff & 0b10000000) | (r_short_data_disp[81]>>8&0x00ff & 0b01111111))
+        dpg.set_value("pad_Ly", -(r_short_data_disp[81]&0x00ff & 0b10000000) | (r_short_data_disp[81]&0x00ff & 0b01111111))
+        dpg.set_value("pad_Rx", -(r_short_data_disp[82]>>8&0x00ff & 0b10000000) | (r_short_data_disp[82]>>8&0x00ff & 0b01111111))
+        dpg.set_value("pad_Ry", -(r_short_data_disp[82]&0x00ff & 0b10000000) | (r_short_data_disp[82]&0x00ff & 0b01111111))
+        padl2val = -(r_short_data_disp[83]>>8&0x00ff & 0b10000000) | (r_short_data_disp[83]>>8&0x00ff & 0b01111111)
+        if (padl2val<0):
+            padl2val = 256+padl2val
+        if (r_short_data_disp[80]&256==0):
+            padl2val = 0
+        dpg.set_value("pad_L2v", padl2val)
+
+        padR2val = -(r_short_data_disp[83]&0x00ff & 0b10000000) | (r_short_data_disp[83]&0x00ff & 0b01111111)
+        if (padR2val<0):
+            padR2val = 256+padR2val
+        if (r_short_data_disp[80]&512==0):
+            padR2val = 0
+        dpg.set_value("pad_R2v", padR2val)
         dpg.render_dearpygui_frame()
 
     dpg.destroy_context()
