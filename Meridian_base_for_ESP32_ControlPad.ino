@@ -1,10 +1,13 @@
-//Meridian_base_for_ESP32_ControlPad_220111
+//Meridian_base_for_ESP32_ControlPad_220111b
 //ESP32_DevKitC
 
-//現状はPS4コントローラ対応に特化したバージョンです
+//PS4コントローラとwiiリモコン（横持ち）に対応しました。
+//122行目でコントローラを選択できます。
+//KRC-5FHも対応していますがTeensy側で受信するので、KRC-5FHを使う場合はESP32ではコントローラーなしを選択してください。
 //
 //ライブラリと接続接続方法
 //
+//<PS4コントローラーの準備>
 //https://github.com/aed3/PS4-esp32
 //1 上記を参考にライブラリを入れる
 //2 ESP32/Meridian_core_for_ESP32_PassThroughでESP32のMACアドレスを調べる（下記起動時にシリアルモニタで確認可能）
@@ -13,6 +16,12 @@
 //4 166行目にESP32自身のMACアドレスを記入する。
 //5 ESP32にスクリプトを書き込んでテスト。シリアル速度は2000000。
 //6 ROS版のrosnode_meridim_demo_dpg.pyがGAMEPADデータの表示に簡易対応しています。
+//
+//<Wiiコントローラーの準備>
+//https://github.com/bigw00d/Arduino-ESP32Wiimote
+//上記を参考にライブラリを入れる
+//Wiiリモコン接続方法：起動後に1、2ボタンを同時押ししてしばらく待つ。
+//
 
 /*
   -------------------------------------------------------------------------
@@ -97,6 +106,9 @@
 #include <WiFi.h>//UDPの設定
 #include <WiFiUdp.h>//UDPの設定
 #include <PS4Controller.h>//PS4コントローラー
+#include "ESP32Wiimote.h"
+ESP32Wiimote wiimote;
+
 #include <ESP32DMASPISlave.h>
 ESP32DMASPI::Slave slave;
 
@@ -107,7 +119,7 @@ ESP32DMASPI::Slave slave;
 #define SEND_IP "192.168.1.xx" //送り先のIPアドレス
 #define SEND_PORT 22222 //送り先のポート番号
 #define RESV_PORT 22224 //このESP32のポート番号
-#define JOYPAD_MOUNT 4 ////ジョイパッドの搭載 0:なし、1:Wii, 2:WiiPRO, 3:PS3, 4:PS4, 5:Xbox
+#define JOYPAD_MOUNT 1 ////ジョイパッドの搭載 0:なし、1:Wii_yoko, 2:Wii+Nun, 3:PS3, 4:PS4, 5:WiiPRO, 6:Xbox　★
 
 //変数一般
 static const int MSG_BUFF = MSG_SIZE * 2;
@@ -161,13 +173,21 @@ void setup()
   String macadressforps4 = "";
 
   esp_read_mac(bt_mac, ESP_MAC_BT);
-  //self_mac_address=String(bt_mac[0], HEX)+":"+String(bt_mac[1], HEX)+":"+String(bt_mac[2], HEX)+":"+String(bt_mac[3], HEX)+":"+String(bt_mac[4], HEX)+":"+String(bt_mac[5], HEX);
+  self_mac_address = String(bt_mac[0], HEX) + ":" + String(bt_mac[1], HEX) + ":" + String(bt_mac[2], HEX) + ":" + String(bt_mac[3], HEX) + ":" + String(bt_mac[4], HEX) + ":" + String(bt_mac[5], HEX);
   Serial.printf("ESP32's Bluetooth Mac Address is => %02X:%02X:%02X:%02X:%02X:%02X\r\n", bt_mac[0], bt_mac[1], bt_mac[2], bt_mac[3], bt_mac[4], bt_mac[5]);
-  //Serial.println(self_mac_address);
+  Serial.println(self_mac_address);
+
+
+  //コントローラの接続開始
 
   //PS4コントローラの接続開始
   if (JOYPAD_MOUNT == 4) {
-    PS4.begin("XX:XX:XX:XX:XX:XX");//ESP32のMACが入ります
+    PS4.begin("XX:XX:XX:XX:XX:XX");//ESP32のMACが入ります★
+  }
+  //Wiiコントローラの接続開始
+  if ((JOYPAD_MOUNT == 1) or (JOYPAD_MOUNT == 2)) {
+    wiimote.init();
+    wiimote.addFilter(ACTION_IGNORE, FILTER_NUNCHUK_ACCEL);
   }
 
   //UDP通信の開始
@@ -311,6 +331,40 @@ void PS4pad_receive() {
   }
 }
 
+// ■ Wiiコントローラ(横持ち)受信用関数 ----------------------------------------------------------
+
+void Wiipad_receive_h() {
+
+  wiimote.task();
+  if (wiimote.available() > 0) {
+    uint16_t button = wiimote.getButtonState();
+    NunchukState nunchuk = wiimote.getNunchukState();
+
+    //ボタンを押すとサーボ位置のL14の値がプラマイ反転する不具合あり
+    pad_btn = 0;
+
+    if (button & 0x0400) pad_btn |= (B00000000 * 256) + B00100000; //right
+    if (button & 0x0100) pad_btn |= (B00000000 * 256) + B01000000; //down
+    if (button & 0x0200) pad_btn |= (B00000000 * 256) + B00010000; //up
+    if (button & 0x0800) pad_btn |= (B00000000 * 256) + B10000000; //left
+
+    if (button & 0x0008) pad_btn |= (B10000000 * 256) + B00000000; //A
+    if (button & 0x0002) pad_btn |= (B01000000 * 256) + B00000000; //1
+    if (button & 0x0001) pad_btn |= (B00100000 * 256) + B00000000; //2
+    if (button & 0x0004) pad_btn |= (B00010000 * 256) + B00000000; //B
+
+    if (button & 0x0010) pad_btn |= (B00000000 * 256) + B00000001; //+
+    if (button & 0x1000) pad_btn |= (B00000000 * 256) + B00001000; //-
+
+    if (button & 0x0080) pad_btn |= (B00000000 * 256) + B01010000; //same as up & down//home
+
+    //ヌンチャクは全部無視
+    s_upd_message_buf.sval[81] = 0;
+    s_upd_message_buf.sval[82] = 0;
+    s_upd_message_buf.sval[83] = 0;
+  }
+  s_upd_message_buf.sval[80] = pad_btn;
+}
 
 //-------------------------------------------------------------------------
 //---- メ　イ　ン　ル　ー　プ ------------------------------------------------
@@ -349,11 +403,6 @@ void loop()
       s_upd_message_buf.bval[i] = r_spi_message_buf.bval[i];
     }
 
-    //コントローラの受信
-    if (JOYPAD_MOUNT == 4) {
-      PS4pad_receive();
-    }
-
     // 受信チェックサムの計算
     checksum = 0;
     for (int i = 0; i < MSG_SIZE - 1; i++) {
@@ -363,13 +412,24 @@ void loop()
 
     if ((short)s_upd_message_buf.sval[MSG_SIZE - 1] == (short)checksum)//チェックがOKならバッファから受信配列に転記
     {
+      
       // 送信データを加工(リモコン受信データの差し込みなど)
-      s_upd_message_buf.sval[49] = 10000;//ダミーデータ
+      //コントローラの受信
+      if (JOYPAD_MOUNT == 4) {
+        PS4pad_receive();
+      }
+      if (JOYPAD_MOUNT == 1) {
+        Wiipad_receive_h();
+      }
     }
     else
     {
       s_upd_message_buf.sval[49] = -10000;//エラーメッセージを何かしら格納。これはダミーデータ
     }
+
+
+
+
 
     // チェックサムを計算して格納
     checksum = 0;
