@@ -1,3 +1,5 @@
+// カリカリチューン動く！ Teensy4.0 - (SPI) - ESP32DevKitC 通信
+// ESP32用
 #include <ESP32DMASPISlave.h>
 
 ESP32DMASPI::Slave slave;
