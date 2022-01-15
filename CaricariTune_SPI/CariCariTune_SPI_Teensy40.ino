@@ -1,4 +1,5 @@
-// カリカリチューン動く！Teensy
+// カリカリチューン動く！ Teensy4.0 - (SPI) - ESP32DevKitC 通信
+// Teensy用
 #include <SPI.h>  // SPIライブラリを導入
 
 //変数の設定
