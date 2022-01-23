@@ -102,7 +102,7 @@ def dpgrun():
         UPDATE_YAW_CENTER_FLAG = 10
 
     dpg.create_context()
-    dpg.create_viewport(title='Meridian Console with ROS', width=600, height=480)
+    dpg.create_viewport(title='Meridian Console without ROS', width=600, height=480)
     with dpg.window(label="Axis Monitor", width=250, height=350,pos=[5,5]):
         with dpg.group(label='LeftSide'): 
             for i in range(0, 15, 1):
