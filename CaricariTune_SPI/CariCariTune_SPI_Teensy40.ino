@@ -111,6 +111,6 @@ void loop() {
 
   digitalWrite(SS, HIGH);//スレーブ機器を終了
   SPI.endTransaction();//SPIを解放
-  delayMicroseconds(370);
+  delayMicroseconds(400);
   framecount ++;
 }
