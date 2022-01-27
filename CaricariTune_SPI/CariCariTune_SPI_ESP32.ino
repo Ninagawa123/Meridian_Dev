@@ -7,8 +7,8 @@ ESP32DMASPI::Slave slave;
 static const int MSG_SIZE = 90;
 static const int MSG_BUFF = MSG_SIZE * 2;
 
-uint8_t* s_message_buf;
-uint8_t* r_message_buf;
+uint8_t* s_spi_meridim_dma;
+uint8_t* r_spi_meridim_dma;
 int checksum;
 long framecount = 0;
 long errorcount = 0;
@@ -31,12 +31,12 @@ void setup()
   Serial.println("SPI Slave Start.");//シリアルモニタの確認用。
 
   // DMAバッファを使う設定　これを使うと一度に送受信できるデータ量を増やせる
-  s_message_buf = slave.allocDMABuffer(MSG_BUFF + 4); //DMAバッファを使う
-  r_message_buf = slave.allocDMABuffer(MSG_BUFF + 4); //DMAバッファを使う
+  s_spi_meridim_dma = slave.allocDMABuffer(MSG_BUFF + 4); //DMAバッファを使う
+  r_spi_meridim_dma = slave.allocDMABuffer(MSG_BUFF + 4); //DMAバッファを使う
 
   // 送受信バッファをリセット
-  memset(s_message_buf, 0, MSG_BUFF + 4);
-  memset(r_message_buf, 0, MSG_BUFF + 4);
+  memset(s_spi_meridim_dma, 0, MSG_BUFF + 4);
+  memset(r_spi_meridim_dma, 0, MSG_BUFF + 4);
 
   //送信データを作成してセット
   checksum = 0;
@@ -49,7 +49,7 @@ void setup()
   s_spi_meridim.sval[MSG_SIZE - 1] = short(checksum & 0xFF ^ 0xFF); //データ末尾にチェックサムにする
 
   for (int i = 0; i < MSG_BUFF - 1 ; i++) { //受信データの転記
-    s_message_buf[i] = s_spi_meridim.bval[i] ;
+    s_spi_meridim_dma[i] = s_spi_meridim.bval[i] ;
   }
 
   slave.setDataMode(SPI_MODE3);
@@ -67,7 +67,7 @@ void loop()
 
   // キューが送信済みであればセットされた送信データを送信する。
   if (slave.remained() == 0) {
-    slave.queue(r_message_buf, s_message_buf, MSG_BUFF + 4);
+    slave.queue(r_spi_meridim_dma, s_spi_meridim_dma, MSG_BUFF + 4);
   }
 
   // マスターからの送信が終了すると、slave.available()は送信サイズを返し、
@@ -77,7 +77,7 @@ void loop()
     slave.pop();//トランザクションを終了するコマンドらしい
 
     for (int i = 0; i < MSG_BUFF - 1 ; i++) { //受信データの転記
-      r_spi_meridim.bval[i] = int(r_message_buf[i]);
+      r_spi_meridim.bval[i] = int(r_spi_meridim_dma[i]);
     }
 
     //受信データのチェックサム確認
@@ -86,7 +86,7 @@ void loop()
       checksum += int(r_spi_meridim.sval[i]);
     }
     checksum = (checksum ^ 0xff) & 0xff; //合計値を反転し、下位2バイトを取得
-    //Serial.print(" cksum: "); Serial.println(uint8_t (r_message_buf[MSG_BUFF - 1]));
+    //Serial.print(" cksum: "); Serial.println(uint8_t (r_spi_meridim_dma[MSG_BUFF - 1]));
 
     if (checksum == short(r_spi_meridim.sval[MSG_SIZE - 1])) {
       //Serial.print("   OK!: "); Serial.println(uint8_t (checksum));
@@ -110,7 +110,7 @@ void loop()
     s_spi_meridim.sval[MSG_SIZE - 1] = short(checksum & 0xFF ^ 0xFF); //データ末尾にチェックサムにする
 
     for (int i = 0; i < MSG_BUFF - 1 ; i++) { //送信データの転記
-      s_message_buf[i] = s_spi_meridim.bval[i] ;
+      s_spi_meridim_dma[i] = s_spi_meridim.bval[i] ;
     }
   }
 }
