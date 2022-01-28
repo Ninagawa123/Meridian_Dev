@@ -40,9 +40,9 @@ void setup()
 
   //送信データを作成してセット
   checksum = 0;
-  for (int i = 0; i < MSG_SIZE - 2; i++) //配列の末尾以外をデータを入れる
+  for (int i = 0; i < MSG_SIZE - 1; i++) //配列の末尾以外をデータを入れる
   {
-    short rnd = random(-900, 900);
+    short rnd = random(-30000, 30000);
     s_spi_meridim.sval[i] = rnd;
     checksum += rnd; //チェックサムを加算
   }
@@ -80,18 +80,25 @@ void loop()
       r_spi_meridim.bval[i] = int(r_spi_meridim_dma[i]);
     }
 
+    for (int i = 0; i < MSG_SIZE ; i++) { //受信データの転記
+      //Serial.print(r_spi_meridim.sval[i]);
+      //Serial.print(",");
+    }
+    //Serial.println();
+
+
     //受信データのチェックサム確認
     checksum = 0;
-    for (int i = 0; i < MSG_SIZE - 2 ; i++) { //受信データの末尾-1番までの値を合計
+    for (int i = 0; i < MSG_SIZE - 1 ; i++) { //受信データの末尾-1番までの値を合計
       checksum += int(r_spi_meridim.sval[i]);
     }
     checksum = (checksum ^ 0xff) & 0xff; //合計値を反転し、下位2バイトを取得
     //Serial.print(" cksum: "); Serial.println(uint8_t (r_spi_meridim_dma[MSG_BUFF - 1]));
 
     if (checksum == short(r_spi_meridim.sval[MSG_SIZE - 1])) {
-      //Serial.print("   OK!: "); Serial.println(uint8_t (checksum));
+      //Serial.print("   OK!: "); Serial.println(short (checksum));
     } else {
-      //Serial.print("**ERR*: "); Serial.println(uint8_t (checksum));
+      //Serial.print("**ERR*: "); Serial.println(short (checksum));
       errorcount ++;
       Serial.print("*err*");
     }
@@ -101,9 +108,9 @@ void loop()
 
     //送信データを作成してセット
     checksum = 0;
-    for (int i = 0; i < MSG_SIZE - 2; i++) //配列の末尾以外をデータを入れる
+    for (int i = 0; i < MSG_SIZE - 1; i++) //配列の末尾以外をデータを入れる
     {
-      short rnd = random(-900, 900);
+      short rnd = random(-30000, 30000);
       s_spi_meridim.sval[i] = rnd;
       checksum += rnd; //チェックサムを加算
     }
