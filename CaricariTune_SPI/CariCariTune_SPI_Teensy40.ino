@@ -1,5 +1,8 @@
 // カリカリチューン動く！ Teensy4.0 - (SPI) - ESP32DevKitC 通信
-// Teensy用
+// Teensy用 2022.01.29
+// short型に対応
+// チェックサムも上手くいっているこの式にすべてあわせること
+
 #include <SPI.h>  // SPIライブラリを導入
 
 //変数の設定
@@ -7,8 +10,8 @@ static const int MSG_SIZE = 90;//データのサイズ（何バイト分か）
 static const int MSG_BUFF = MSG_SIZE * 2; //データのサイズ（何バイト分か）
 int checksum;//チェックサム計算用
 
-long framecount = 0;
-long errorcount = -1;
+long frame_count = 0;
+long error_count_spi = 0;
 unsigned long time_data = 0;
 
 //共用体の宣言 : Meridim配列格納用、SPI送受信バッファ配列格納用
@@ -41,22 +44,15 @@ void loop() {
 
   //送信データの作成
   checksum = 0;
-  for (int i = 0; i < MSG_SIZE - 2; i++) {
-    s_spi_meridim.sval[i] = uint8_t (random(-900, 900));
+  for (int i = 0; i < MSG_SIZE - 1; i++) //配列の末尾以外にデータを入れる
+  {
+    short rnd = random(-30000, 30000);//ここではランダムな配列を使う
+    s_spi_meridim.sval[i] = rnd;//配列にランダムなデータを入れる
     checksum += int(s_spi_meridim.sval[i]);
   }
-  checksum = (checksum ^ 0xFF) & 0xFF; //合計値を反転し、下位2ビットを取得
-  s_spi_meridim.sval[MSG_SIZE - 1] = uint8_t (checksum); //末尾にチェックサムを追加
+  checksum = short(~checksum);//チェックサムを確定
 
-  /*
-    //送信データの表示
-    Serial.print("  [Send] ");
-    for (int i = 0; i < MSG_SIZE+4; i++) {
-    Serial.print(uint8_t (s_message_buf[i]));
-    Serial.print(", ");
-    }
-    Serial.println();
-  */
+  s_spi_meridim.sval[MSG_SIZE - 1] = short (checksum); //末尾にチェックサムを追加
 
   //SPI通信の開始
   SPI.beginTransaction(mySPISettings);//通信開始
@@ -67,50 +63,33 @@ void loop() {
     r_spi_meridim.bval[i] = SPI.transfer(s_spi_meridim.bval[i]);  //※送信と同時に受信データが返り値になる
     //delayMicroseconds(1);//送受信時間調整用のディレイ
   }
-
-
-  /*
-    //受信データの表示
-    Serial.print("  [Rsvd] ");
-    for (int i = 0; i < MSG_SIZE+4; i++) {
-    Serial.print(uint8_t (r_message_buf[i]));
-    Serial.print(", ");
-    } Serial.println();
-  */
   delayMicroseconds(50);
 
   //受信データのチェックサム確認
   checksum = 0;
-  for (int i = 0; i < MSG_SIZE - 2; i++) {//受信データの末尾-1番までの値を合計
+  for (int i = 0; i < MSG_SIZE - 1; i++) {//受信データの末尾-1番までの値を合計
     checksum += int(r_spi_meridim.sval[i]);
   }
-  checksum = (checksum ^ 0xFF) & 0xFF; //合計値を反転し、下位2ビットを取得
-
-  /*
-    Serial.print("  CKSUM: "); // チェックサムの正解を表示
-    Serial.println(uint8_t (r_message_buf[MSG_SIZE - 1]));
-  */
-
-  if (uint8_t (checksum) == uint8_t (r_spi_meridim.sval[MSG_SIZE - 1])) {//チェックサムの正誤を表示
-    //Serial.print("    OK!: "); Serial.println(uint8_t (checksum));
+  checksum = short(~checksum);//チェックサムを計算
+  if (checksum == r_spi_meridim.sval[MSG_SIZE - 1]) {//チェックサムの正誤を表示
   } else {
-    //Serial.print("****NG*: "); Serial.println(uint8_t (checksum));
-    errorcount ++;
+    error_count_spi ++;
   }
-  Serial.print("ERR ");
-  Serial.print(errorcount);
+  
+  Serial.print("Err ");
+  Serial.print(error_count_spi);
   Serial.print(" / ");
-  Serial.print(framecount);
+  Serial.print(frame_count);
   Serial.println();//シリアルモニタ改行
 
   time_data = millis();
-  Serial.print("SPI ");
-  Serial.print(float(framecount) / float(time_data) * 1000);
+  Serial.print("Spd ");
+  Serial.print(float(frame_count) / float(time_data) * 1000);
   Serial.print(" Hz");
   Serial.println();//シリアルモニタ改行
 
   digitalWrite(SS, HIGH);//スレーブ機器を終了
   SPI.endTransaction();//SPIを解放
   delayMicroseconds(400);
-  framecount ++;
+  frame_count ++;
 }
