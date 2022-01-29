@@ -105,7 +105,7 @@ void loop()
       checksum += int(s_spi_meridim.sval[i]); //チェックサムを加算
     }
     checksum = short(~checksum);//チェックサムを確定
-    s_spi_meridim.sval[MSG_SIZE - 1] = short(checksum); //データ末尾にチェックサムを入れるでもよい
+    s_spi_meridim.sval[MSG_SIZE - 1] = short(checksum); //データ末尾にチェックサムを入れる
     for (int i = 0; i < MSG_BUFF; i++) { //受信データのDMAから配列への転記
       s_spi_meridim_dma[i] = s_spi_meridim.bval[i] ;
     }
