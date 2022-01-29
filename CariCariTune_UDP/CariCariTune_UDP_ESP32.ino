@@ -7,9 +7,9 @@
 
 //[E-3] 各種設定 #DEFINE ---------------------------------
 #define MSG_SIZE 90 //Meridim配列の長さ設定（デフォルトは90）
-#define AP_SSID "xxxxxx" //アクセスポイントのAP_SSID
-#define AP_PASS "xxxxxx" //アクセスポイントのパスワード
-#define SEND_IP "192.168.1.xx" //送り先のIPアドレス
+#define AP_SSID "xxxxxxxx" //アクセスポイントのAP_SSID
+#define AP_PASS "xxxxxxxx" //アクセスポイントのパスワード
+#define SEND_IP "192.168.1.xx" //送り先のPCのIPアドレス（PCのIPアドレスを調べておく）
 #define SEND_PORT 22222 //送り先のポート番号
 #define RESV_PORT 22224 //このESP32のポート番号
 
@@ -17,7 +17,7 @@
 static const int MSG_BUFF = MSG_SIZE * 2;
 int checksum; //チェックサム計算用
 long frame_count = 0;
-long error_count = 0;
+long error_count_udp = 0;
 
 //wifi設定
 WiFiUDP udp;
@@ -28,15 +28,15 @@ typedef union
   short sval[MSG_SIZE];
   uint8_t bval[MSG_BUFF];
 } UnionData;
-UnionData s_spi_message; //SPI受信用共用体のインスタンスを宣言
-UnionData r_spi_message; //SPI受信用共用体のインスタンスを宣言
-UnionData s_udp_message; //UDP送信用共用体のインスタンスを宣言
-UnionData r_udp_message; //UDP受信用共用体のインスタンスを宣言
+UnionData s_spi_meridim; //SPI受信用共用体のインスタンスを宣言
+UnionData r_spi_meridim; //SPI受信用共用体のインスタンスを宣言
+UnionData s_udp_meridim; //UDP送信用共用体のインスタンスを宣言
+UnionData r_udp_meridim; //UDP受信用共用体のインスタンスを宣言
 
 void setup()
 {
   Serial.begin(2000000);
-  delay(120);//シリアル準備待ち用ディレイ
+  delay(120);//シリアルの開始を待ち安定化させるためのディレイ（ほどよい）
   Serial.println("Serial Start...");
 
   //WiFi 初期化
@@ -80,24 +80,17 @@ void receiveUDP() {
     udp.read(tmpbuf, MSG_BUFF);
     for (int i = 0; i < MSG_BUFF; i++)
     {
-      r_udp_message.bval[i] = tmpbuf[i];
+      r_udp_meridim.bval[i] = tmpbuf[i];
     }
   }
 }
 
 // ■ 送信用の関数 ----------------------------------------------------------
 void sendUDP() {
-  String test = "";//表示用の変数
-
   udp.beginPacket(SEND_IP, SEND_PORT);//UDPパケットの開始
-
   for (int i = 0; i < MSG_BUFF; i++) {
-    udp.write(s_udp_message.bval[i]);//１バイトずつ送信
-    if (i % 2 == 0) {//表示用に送信データを共用体から2バイトずつ取得
-      test += String(s_udp_message.sval[i / 2]) + ", ";
-    }
+    udp.write(s_udp_meridim.bval[i]);//１バイトずつ送信
   }
-
   udp.endPacket();//UDPパケットの終了
 }
 
@@ -114,27 +107,22 @@ void loop()
 
   //[1-2] UDP受信配列からSPI送信配列にデータを転写
   for (int i = 0; i < MSG_BUFF; i++) {
-    s_spi_message.bval[i] = r_udp_message.bval[i];
+    s_spi_meridim.bval[i] = r_udp_meridim.bval[i];
   }
 
   checksum = 0;
   for (int i = 0; i < MSG_SIZE - 1; i ++) {
-    checksum += s_spi_message.sval[i];
+    checksum += int(s_spi_meridim.sval[i]);
   }
-  checksum = ~checksum & 0xffff;
+  checksum = short(~checksum);//チェックサムを計算
 
-
-  if (s_spi_message.sval[MSG_SIZE - 1] == short(checksum))
+  if (checksum == s_spi_meridim.sval[MSG_SIZE - 1])
   {
-    //Serial.println("   OK!: "); //Serial.println(uint8_t (checksum));
   } else {
-    //Serial.print("**ERR*: "); Serial.println(uint8_t (checksum));
-    error_count ++;
-    Serial.println("*err*");
+    error_count_udp ++;
   }
-  
   frame_count = frame_count + 1;
-  Serial.print(error_count);    Serial.print("/");    Serial.println(frame_count);
+  Serial.print(error_count_udp);    Serial.print("/");    Serial.println(frame_count);
 
   //---- < 2 > S P I 送 信 信 号 作 成  -----------------------------------------------
 
@@ -145,17 +133,16 @@ void loop()
   for (int i = 0; i < MSG_SIZE - 2; i++) //配列の末尾以外をデータを入れる
   {
     short rnd = random(-30000, 30000);
-    s_udp_message.sval[i] = rnd;
+    s_udp_meridim.sval[i] = rnd;
   }
 
   // チェックサムを計算して格納
   checksum = 0;
   for (int i = 0; i < MSG_SIZE - 1; i ++) {
-    checksum += s_udp_message.sval[i];
+    checksum += s_udp_meridim.sval[i];
   }
-  checksum = ~checksum & 0xffff;
-  s_udp_message.sval[MSG_SIZE - 1] = checksum;
-
+  checksum = short(~checksum);//チェックサムを計算
+  s_udp_meridim.sval[MSG_SIZE - 1] = short(checksum);
 
   //---- < 5 > U D P 送 信 ----------------------------------------------
   //[4-1] UDP送信を実行
