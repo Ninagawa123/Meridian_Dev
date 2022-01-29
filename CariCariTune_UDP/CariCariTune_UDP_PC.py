@@ -2,6 +2,9 @@
 #もしくは　#!/usr/bin/env python など環境に合わせて
 # カリカリチューン動く！ ESP32DevKitC - (Wifi/UDP) - PC/python
 # PC/python用
+# short型に対応
+# チェックサムの計算式もOK
+# 速度は約700Hz（meridim配列を1秒700回送受信）
 
 from random import random
 import numpy as np
@@ -42,15 +45,13 @@ while True:
             #UDP受信
             r_bin_data,addr = sock.recvfrom(1472)
             r_upd_meridim_tuple=struct.unpack('90h',r_bin_data)
-            print(r_upd_meridim_tuple)
+            #print(r_upd_meridim_tuple) #データ内容を表示したい場合はコメントアウト
 
             #UDPチェックサム
             checksum = np.array([0], dtype=np.int16)
             for i in  range(MSG_SIZE-2):
                 checksum[0] += r_upd_meridim_tuple[i]
             checksum[0] = ~checksum[0] & 0xffff
-            print("[Calc] ",checksum[0])
-            print("[Ans ] ",r_upd_meridim_tuple[MSG_SIZE-1])
             
             if checksum[0] == r_upd_meridim_tuple[MSG_SIZE-1]:
                 pass
