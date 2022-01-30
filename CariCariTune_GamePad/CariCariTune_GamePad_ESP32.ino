@@ -8,7 +8,7 @@ ESP32Wiimote wiimote;
 
 //[E-3] 各種設定 #DEFINE ---------------------------------
 #define MSG_SIZE 90 //Meridim配列の長さ設定（デフォルトは90）
-#define JOYPAD_MOUNT 1 ////ジョイパッドの搭載 0:なし、1:Wii_yoko, 2:Wii+Nun, 3:PS3, 4:PS4, 5:WiiPRO, 6:Xbox
+#define JOYPAD_MOUNT 4 ////ジョイパッドの搭載 0:なし、1:Wii_yoko, 2:Wii+Nun, 3:PS3, 4:PS4, 5:WiiPRO, 6:Xbox
 #define JOYPAD_POLLING 10 ////ジョイパッドの問い合わせフレーム間隔
 
 //変数一般
