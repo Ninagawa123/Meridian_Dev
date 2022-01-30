@@ -1,5 +1,10 @@
 // カリカリチューン動く！ ESP32DevKitC - (Bluetooth) - PS4/Wiiリモコン 通信
 // ESP32用
+//
+//【注意点】
+//★PS4コントローラは20220130現在使用不能（今月からペアリング確立しなくなった）
+//★ヌンチャクのデータも一応表示するが、レバーの取得が適切ではない
+//★よってWiiリモコン横持ちのみ適切に反応
 
 //[E-2] ライブラリ導入 -----------------------------------
 #include <PS4Controller.h>//PS4コントローラー
@@ -8,7 +13,7 @@ ESP32Wiimote wiimote;
 
 //[E-3] 各種設定 #DEFINE ---------------------------------
 #define MSG_SIZE 90 //Meridim配列の長さ設定（デフォルトは90）
-#define JOYPAD_MOUNT 4 ////ジョイパッドの搭載 0:なし、1:Wii_yoko, 2:Wii+Nun, 3:PS3, 4:PS4, 5:WiiPRO, 6:Xbox
+#define JOYPAD_MOUNT 2 ////ジョイパッドの搭載 0:なし、1:Wii_yoko, 2:Wii+Nun, 3:PS3, 4:PS4, 5:WiiPRO, 6:Xbox
 #define JOYPAD_POLLING 10 ////ジョイパッドの問い合わせフレーム間隔
 
 //変数一般
@@ -59,7 +64,7 @@ void setup()
   //コントローラの接続開始
   //PS4コントローラの接続開始
   if (JOYPAD_MOUNT == 4) {
-    PS4.begin("XX:XX:XX:XX:XX:XX");//ESP32のMACが入ります.PS4にも設定します。
+    PS4.begin("xx:xx:xx:xx:xx:xx");//ESP32のMACが入ります.PS4にも設定します。
   }
   //Wiiコントローラの接続開始
   if ((JOYPAD_MOUNT == 1) or (JOYPAD_MOUNT == 2)) {
@@ -184,10 +189,17 @@ void Wiipad_receive_h() {
 
     if (button & 0x0080) pad_btn |= (B00000000 * 256) + B01010000; //same as up & down//home
 
-    //ヌンチャクは全部無視
-    s_upd_message_buf.sval[81] = 0;
-    s_upd_message_buf.sval[82] = 0;
-    s_upd_message_buf.sval[83] = 0;
+    //ヌンチャク
+    s_upd_message_buf.sval[81] = 0;//pad_stick_L
+    s_upd_message_buf.sval[82] = 0;//pad_stick_R
+    s_upd_message_buf.sval[83] = 0;//pad_L2_R2_val
+
+    if (JOYPAD_MOUNT == 2) {
+      NunchukState nunchuk = wiimote.getNunchukState();
+      s_upd_message_buf.sval[81] = (nunchuk.xStick * 256 + nunchuk.yStick);
+      if (nunchuk.cBtn == 1) pad_btn |= (B00000100 * 256) + B00000000;
+      if (nunchuk.zBtn == 1) pad_btn |= (0x00000001 * 256) + B00000000;
+    }
   }
   s_upd_message_buf.sval[80] = pad_btn;
 }
@@ -226,7 +238,7 @@ void loop()
     if (JOYPAD_MOUNT == 4) {
       PS4pad_receive();
     }
-    if (JOYPAD_MOUNT == 1) {
+    if ((JOYPAD_MOUNT == 1) or (JOYPAD_MOUNT == 2)) {
       Wiipad_receive_h();
     }
   }
@@ -238,6 +250,13 @@ void loop()
   //---- < 5 > U D P 送 信 ----------------------------------------------
   Serial.println(s_upd_message_buf.sval[80], BIN);
 
+  //★ヌンチャクのデータも一応表示するが、レバーの取得が適切ではない
+  int nun_x_center = 133;
+  int nun_y_center = 136;
+  Serial.print((s_upd_message_buf.sval[81] >> 8 & 0x00ff));// - nun_x_center);
+  Serial.print(",");
+  Serial.println((s_upd_message_buf.sval[81] & 0x00ff));// - nun_y_center);
+
   delayMicroseconds(1);
 
   time_data = millis();
@@ -247,4 +266,5 @@ void loop()
   Serial.println();//シリアルモニタ改行
   delayMicroseconds(500);
   frame_count ++;
+  delay(1);//このディレイは外すことができる
 }
