@@ -1,5 +1,6 @@
-// カリカリチューン動く！ ESP32DevKitC - (Wifi/UDP) - PC/python  通信
-// ESP32用
+// Meridian_core_for_ESP32_MT_20220201
+// Teensy4.0 - (SPI) - ESP32DevKitC - (Wifi/UDP) - PC/python
+// ESP32用のマルチスレッド化したMeiridian_core
 
 //[E-2] ライブラリ導入 -----------------------------------
 #include <WiFi.h>//UDPの設定
@@ -13,9 +14,9 @@ ESP32Wiimote wiimote;
 
 //[E-3] 各種設定 #DEFINE ---------------------------------
 #define MSG_SIZE 90 //Meridim配列の長さ設定（デフォルトは90）
-#define AP_SSID "xxxxxxxx" //アクセスポイントのAP_SSID
+#define AP_SSID "xxxxxxxx" //アクセスポイントのAP_SSID(2.4GhzのAPに接続)
 #define AP_PASS "xxxxxxxx" //アクセスポイントのパスワード
-#define SEND_IP "192.168.1.xx" //送り先のPCのIPアドレス（PCのIPアドレスを調べておく）
+#define SEND_IP "192.168.1.29" //送り先のPCのIPアドレス（PCのIPアドレスを調べておく）
 #define SEND_PORT 22222 //送り先のポート番号
 #define RESV_PORT 22224 //このESP32のポート番号
 #define JOYPAD_MOUNT 2 ////ジョイパッドの搭載 0:なし、1:Wii_yoko, 2:Wii+Nun, 3:PS3, 4:PS4, 5:WiiPRO, 6:Xbox
@@ -31,11 +32,9 @@ uint8_t* s_spi_meridim_dma;//DMA用
 uint8_t* r_spi_meridim_dma;//DMA用
 
 //フラグ関連
-bool udp_resv_flag = 1;//UDPスレッドでの受信反応フラグ　1はデータを回し始めるのに必要
-//bool udp_revd_flag = 0;//メインスレッドでのUDPの受信処理完了フラグ　
-bool udp_send_flag = 1;
-bool spi_resv_flag = 0;
-bool spi_send_flag = 0;
+bool udp_resv_flag = 1;//UDPスレッドでの受信反応フラグ
+bool udp_send_flag = 0;//UDP送信完了フラグ
+bool spi_resv_flag = 0;//SPI受信完了フラグ
 
 //マルチスレッドのタスクハンドル格納用
 TaskHandle_t thp[4];
@@ -53,7 +52,7 @@ UnionData s_spi_meridim; //SPI受信用共用体
 UnionData r_spi_meridim; //SPI受信用共用体
 UnionData s_udp_meridim; //UDP送信用共用体
 UnionData r_udp_meridim; //UDP受信用共用体
-UnionData r_dummy_meridim; //UDP受信用共用体 テスト用ダミー
+//UnionData r_dummy_meridim; //UDP受信用共用体 テスト用ダミー
 
 //コントローラー用変数
 unsigned short pad_btn = 0;
@@ -66,13 +65,27 @@ short pad_stick_L_y = 0;
 short pad_stick_V = 0;
 short pad_R2_val = 0;
 short pad_L2_val = 0;
-long pad_btn_disp = 65536;
+long pad_btn_disp = 65536;//ディスプレイ表示用（バイナリ表示の上位ビット）
 
 void setup()
 {
   Serial.begin(2000000);
   delay(130);//シリアルの開始を待ち安定化させるためのディレイ（ほどよい）
   Serial.println("Serial Start...");
+
+  //コントローラの接続開始
+  //PS4コントローラの接続開始
+  if (JOYPAD_MOUNT == 4) {
+    PS4.begin("e8:68:e7:30:b4:52");//ESP32のMACが入ります.PS4にも設定します。
+    Serial.println("PS4 controller connecting...");
+  }
+  //Wiiコントローラの接続開始
+  if ((JOYPAD_MOUNT == 1) or (JOYPAD_MOUNT == 2)) {
+    wiimote.init();
+    wiimote.addFilter(ACTION_IGNORE, FILTER_NUNCHUK_ACCEL);
+    Serial.println("Wiimote connecting...");
+  }
+  //delay(1000);
 
   //WiFi 初期化
   WiFi.disconnect(true, true);//WiFi接続をリセット
@@ -85,24 +98,10 @@ void setup()
   Serial.println("WiFi connected.");//WiFi接続完了通知
   Serial.print("ESP32's IP address is  => ");
   Serial.println(WiFi.localIP());//ESP32自身のIPアドレスの表示
+
   //ESP32自身のBluetoothMacアドレスを表示
   uint8_t bt_mac[6];
   String self_mac_address = "";
-
-  //コントローラの接続開始
-  //PS4コントローラの接続開始
-  if (JOYPAD_MOUNT == 4) {
-    PS4.begin("e8:68:e7:30:b4:52");//ESP32のMACが入ります.PS4にも設定します。
-    Serial.println("PS4 controller connecting...");
-  }
-  //Wiiコントローラの接続開始
-  if ((JOYPAD_MOUNT == 1) or (JOYPAD_MOUNT == 2)) {
-    wiimote.init();
-
-    wiimote.addFilter(ACTION_IGNORE, FILTER_NUNCHUK_ACCEL);
-    Serial.println("Wiimote connecting...");
-  }
-  delay(1000);
 
   esp_read_mac(bt_mac, ESP_MAC_BT);
   self_mac_address = String(bt_mac[0], HEX) + ":" + String(bt_mac[1], HEX) + ":" + String(bt_mac[2], HEX) + ":" + String(bt_mac[3], HEX) + ":" + String(bt_mac[4], HEX) + ":" + String(bt_mac[5], HEX);
@@ -135,17 +134,15 @@ void setup()
     s_spi_meridim_dma[i] = s_spi_meridim.bval[i] ;
   }
 
-  //ここでスレッドを立てる宣言（無線はすべてCORE0で動く。割り込みも含め。メインループはCORE1）
-  xTaskCreatePinnedToCore(Core0_UDP_r, "Core0_UDP_r", 8192, NULL, 10, &thp[0], 0);
-  xTaskCreatePinnedToCore(Core0_UDP_s, "Core0_UDP_s", 4096, NULL, 7, &thp[1], 0);
-  xTaskCreatePinnedToCore(Core0_BT_r, "Core0_BT_r", 8192, NULL, 5, &thp[2], 0);
+  //ここでスレッドを立てる宣言（無線系はすべてCORE0で動くらしい メインループはCORE1）
+  xTaskCreatePinnedToCore(Core0_UDP_s, "Core0_UDP_s", 4096, NULL, 7, &thp[0], 0);
+  xTaskCreatePinnedToCore(Core0_BT_r, "Core0_BT_r", 8192, NULL, 5, &thp[1], 0);
 
   slave.setDataMode(SPI_MODE3);
   slave.setMaxTransferSize(MSG_BUFF + 4);
   slave.setDMAChannel(2); // 専用メモリの割り当て（1か2のみ)
   slave.setQueueSize(1); // キューサイズ　とりあえず1
-  // HSPI(SPI2) のデフォルトピン番号は CS: 15, CLK: 14, MOSI: 13, MISO: 12
-  slave.begin(); // 引数を指定しなければデフォルトのSPI（SPI2,HSPIを利用）
+  slave.begin(); // 引数を指定しなければデフォルトのSPI（SPI2,HSPIを利用）ピン番号は CS: 15, CLK: 14, MOSI: 13, MISO: 12
 }
 
 
@@ -178,17 +175,26 @@ void sendUDP() {
   udp.endPacket();//UDPパケットの終了
 }
 
-
-//-------------------------------------------------------------------------
-//---- U D P 受 信 用 ス レ ッ ド -------------------------------------------
-//-------------------------------------------------------------------------
-void Core0_UDP_r(void *args) {//サブCPU(Core0)で実行するプログラム
-  delay(1000);
-
-  while (1) {//ここで無限ループを作っておく
-    //receiveUDP();
-    delay(1);//1/1000秒待つ
+// ■ チェックサムの算出関数 ----------------------------------------------------------
+short checksum_val(short arr[], int len) {
+  int cksm = 0;
+  for (int i = 0; i < len - 1; i++) {
+    cksm += int(arr[i]);
   }
+  //cksm = short(~cksm);
+  return ~cksm;
+}
+
+// ■ チェックサムの判定関数 ----------------------------------------------------------
+bool checksum_rslt(short arr[], int len) {
+  int cksm = 0;
+  for (int i = 0; i < len - 1; i++) {
+    cksm += int(arr[i]);
+  }
+  if (short(~cksm) == arr[len - 1]) {
+    return true;
+  }
+  return false;
 }
 
 //-------------------------------------------------------------------------
@@ -196,15 +202,13 @@ void Core0_UDP_r(void *args) {//サブCPU(Core0)で実行するプログラム
 //-------------------------------------------------------------------------
 void Core0_UDP_s(void *args) {//サブCPU(Core0)で実行するプログラム
   delay(1000);
-
   while (1) {
     if (udp_send_flag == 1) {
       sendUDP();
       udp_send_flag = 0;
     }
-    delay(6);//1/1000秒待つ
+    delay(2);//1/1000秒待つ
   }
-
 }
 
 // ■ PS4コントローラ受信用関数 ------------------------------------------------
@@ -297,7 +301,7 @@ void Wiipad_receive_h() {
       if (nunchuk.cBtn == 1) pad_btn |= (B00000100 * 256) + B00000000;
       if (nunchuk.zBtn == 1) pad_btn |= (0x00000001 * 256) + B00000000;
     }
-    delay(6);//ここの数値でCPU負荷を軽減できるかも
+    delay(2);//ここの数値でCPU負荷を軽減できるかも
   }
 }
 
@@ -321,102 +325,83 @@ void loop()
   //---- < 1 > U D P 受 信 --------------------------------------------------
   //[1-1] UDP受信の実行 もしデータパケットが来ていれば受信する
   receiveUDP();
-  /*
-  int udp_resv_wait = 0;
-  while (udp_resv_flag != 1) {
-    //delay(1);
-    delay(1);
-    udp_resv_wait ++;
-    if (udp_resv_wait > 3000) { //UPD受信待ちは3秒でタイムアウトし次へ
-      udp_resv_flag = 1;//タイムアウトでUPD受信完了フラグを上げる（あとでエラーコードも足す）
-    }
-  }
-  */
+  // ● UDP受信データ「r_udp_meridim」に中身が入った状態
 
-  //ここで「r_udp_meridim」に中身が入った状態
-
-  //UDPを受信したら以下を実行
   //[1-2] UDP受信配列からSPI送信配列にデータを転写
   if (udp_resv_flag == 1) {
 
-    //ここで「r_udp_meridim」のチェックサムを実施
-    checksum = 0;
-    for (int i = 0; i < MSG_SIZE - 1; i ++) {
-      checksum += int(r_udp_meridim.sval[i]);
-    }
-    checksum = short(~checksum);//チェックサムを計算
-
-    if (r_udp_meridim.sval[MSG_SIZE - 1] == short(checksum))
+    // ● UDP受信データ「r_udp_meridim」のチェックサムを確認
+    if (checksum_rslt(r_udp_meridim.sval, MSG_SIZE))
     {
-      //SPI送信データを上書き更新する
+      // ● 受信成功ならUDP受信データをSPI送信データに上書き更新する
       memcpy(s_spi_meridim.bval, r_udp_meridim.bval, MSG_BUFF + 4);
       //ここでこのパートのエラーフラグも消す
-      //※ここのデータはあとでやる。エクセルの表を見てフラグを立てる作業
-      Serial.println("UDPrvOK!");
+      s_spi_meridim.bval[177] &= 0b10111111;//meridimの[88]番の14ビット目(ESPのUPD受信成否)のフラグを下げる
+      Serial.println("UDPrvOK");
     } else {
-      //前回のSPI送信データにエラーフラグだけ上乗せする
-      //※ここのデータはあとでやる。エクセルの表を見てフラグを立てる作業
+      // ● 受信失敗ならUDP受信データをSPI送信データに上書き更新せず、前回のSPI送信データにエラーフラグだけ上乗せする
+      s_spi_meridim.bval[177] |= 0b01000000;//meridimの[88]番の14ビット目(ESPのUPD受信成否)のフラグを上げる
       error_count_udp ++;
       Serial.print("U:"); Serial.println(error_count_udp);//    Serial.print("/");    Serial.println(frame_count);
     }
-    udp_resv_flag =0;
+    udp_resv_flag = 0;
   }
 
-  //ここで「s_spi_meridim」にはチェックサム済みの「r_udp_meridim」が転記され、ESP32UDP受信エラーフラグも入った状態
+  // ●「s_spi_meridim」にはチェックサム済みの「r_udp_meridim」が転記され、ESP32UDP受信エラーフラグも入った状態
 
   //---- < 2 > S P I 送 信 信 号 作 成  -----------------------------------------------
 
-  //リモコンデータの書き込み ★場所はここで良いのか後で確認？たぶんよい？
+  //[2-1] ユーザー定義の送信データの書き込み
+  // Teensyへ送るデータをこのパートで作成、書き込み
+
+  //[2-2] リモコンデータの書き込み
   s_spi_meridim.sval[80] = pad_btn;
-  if (s_spi_meridim.sval[80] != 0){
-    Serial.println(s_spi_meridim.sval[80],BIN);
-  }
+  //if (s_spi_meridim.sval[80] != 0) {//ボタンのモニタリング用
+  //  Serial.println(s_spi_meridim.sval[80], BIN);
+  //}
   s_spi_meridim.sval[81] = pad_stick_L;
   s_spi_meridim.sval[82] = pad_stick_R;
   s_spi_meridim.sval[83] = pad_stick_V;
 
-  //ここで「s_spi_meridim」にはESP32で受けたリモコンデータも入った状態
+  // ● SPI送信データ「s_spi_meridim」はESP32で受けたリモコンデータが上書きされた状態
 
-  //ここで「s_spi_meridim」のチェックサムを作成
-  checksum = 0;
-  for (int i = 0; i < MSG_SIZE - 1; i ++) {
-    checksum += int(s_spi_meridim.sval[i]);
-  }
-  checksum = short(~checksum);//チェックサムを計算
-  s_spi_meridim.sval[MSG_SIZE - 1] = short(checksum);
+  //[2-3] チェックサムの追記
+  // ● SPI送信データ「s_spi_meridim」にチェックサムを追記
+  s_spi_meridim.sval[MSG_SIZE - 1] = checksum_val(s_spi_meridim.sval, MSG_SIZE);
 
-  //ここで「s_spi_meridim」はチェックサムも入り完成している
+  // ● SPI送信データ「s_spi_meridim」はチェックサムも入り完成している
 
   //---- < 3 > S P I 送 受 信 -----------------------------------------------
-  while (slave.available())//完了した（受信した）トランザクション結果のサイズ size of completed (received) transaction results
+  while (slave.available())//完了した（受信した）トランザクション結果のサイズ
   {
-    //SPI送信データが完成し、DMA転記も完了
-    memcpy(s_spi_meridim_dma, s_spi_meridim.bval, MSG_BUFF + 4);
-    memcpy(r_spi_meridim.bval, r_spi_meridim_dma, MSG_BUFF + 4);
-    //ここで「r_spi_meridim.bval」に中身が入った状態
-    //SPI受信の中身はチェックせずそのままUDPでPCにパススルーする
 
-    frame_count = frame_count + 1;
+    // ↓↓↓↓ SPI送受信用のデータはここで処理しなくてはならない ↓↓↓↓
+
+    //[3-1] 完成したSPI送信データをDMAに転記
+    memcpy(s_spi_meridim_dma, s_spi_meridim.bval, MSG_BUFF + 4);
+
+    // ↑↑↑↑ SPI送受信用のデータはここまでで処理しなくてはならない ↑↑↑↑
 
     slave.pop();//DMAのデータ配列の先頭を削除
   }
 
-  //ここでSPIの送受信を行う
-  // キューが送信済みであればセットされた送信データを送信する。
-  if (slave.remained() == 0) {//キューに入れられた（完了していない）トランザクションのサイズが0なら実行　size of queued (not completed) transactions
+  //[3-2] SPI送受信の実行
+  //SPIの送受信:キューが送信済みであればセットされた送信データを送信する。
+  if (slave.remained() == 0) {//キューに入れられた（完了していない）トランザクションのサイズが0なら実行
     slave.queue(r_spi_meridim_dma, s_spi_meridim_dma, MSG_BUFF + 4);
     spi_resv_flag = 1;//SPI受信完了フラグを上げる
+    frame_count = frame_count + 1;//SPIの受信をもってフレームカウントとする
   }
 
   //---- < 4 > U D P 送 信 信 号 作 成 ----------------------------------------
-  if (spi_resv_flag == 1) {
-
+  if (spi_resv_flag == 1) {//SPI受信完了フラグが立っていればUDP送信スレッドにフラグで知らせる
+    
+    //[4-1] 受信したSPI送信データをUDP送信データに転記
     memcpy(s_udp_meridim.bval, r_spi_meridim_dma, MSG_BUFF + 4);
-
-    //ここで「s_udp_meridim.bval」に中身が入った状態
+    // ● UDP送信データ"s_udp_meridim"に中身が入った状態
 
     //---- < 5 > U D P 送 信 ----------------------------------------------
-    //[4-1] UDP送信を実行（フラグを立ててスレッドに知らせる）
+    //[5-1] UDP送信を実行（フラグを立ててスレッドに知らせる）
     udp_send_flag = 1;//UDP送信準備完了フラグを上げる
     spi_resv_flag = 0;//SPI受信完了フラグを下げる
   }
