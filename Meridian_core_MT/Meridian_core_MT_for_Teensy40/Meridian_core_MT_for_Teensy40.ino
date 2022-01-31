@@ -1,9 +1,8 @@
 
 //Meridian_core_for_Teensy_2022.1.31
 //This code is for Teensy 4.0
-//PC計測144Hzでの動作を確認
+//PC計測200Hz以上での安定動作を確認
 //
-//MPU取得情報追加[S-3],setupMPU(),getYawPitchRoll()
 //MeridianControlPanelDPG対応
 //マスターコマンド改訂 (S-3-3)
 //KRC-5FH改訂(S-3-5)
@@ -132,6 +131,7 @@
 #define ICS3_MOUNT 0 //半二重サーボ信号の3系のありなし
 
 //その他の基本設定 (S-3-2) ---------------------------------
+#define FRAME_DURATION 5//1フレームあたりの単位時間（単位ms）
 #define MSG_SIZE 90 //Meridim配列の長さ設定（デフォルトは90）
 #define ERR_LED 2 //LED用 処理が時間内に収まっていない場合に点灯
 #define SERIAL_PC 60000000 //PCとのシリアル速度（モニタリング表示用）
@@ -146,7 +146,7 @@
 #define ENTER_TRIM_MODE 1003   //トリムモードに入る（全サーボオンで垂直に気おつけ姿勢で立つ）
 
 //タイマー管理用の変数 (S-3-4) ---------------------------------
-long frame_ms = 500;// 1フレームあたりの単位時間(ms)
+long frame_ms = FRAME_DURATION;// 1フレームあたりの単位時間(ms)
 long merc = (long)millis(); // フレーム管理時計の時刻 Meridian Clock.
 long curr = (long)millis(); // 現在時刻を取得
 long curr_micro = (long)micros(); // 現在時刻を取得
@@ -175,14 +175,14 @@ int test_val_1 = 0;//テスト用
 //共用体の宣言 : Meridim配列格納用、SPI送受信バッファ配列格納用
 typedef union //共用体は共通のメモリ領域に異なる型で数値を読み書きできる
 {
-  short sval[MSG_SIZE];// short型で100個の配列データを持つ
-  uint8_t bval[MSG_BUFF]; //1バイト単位で200個の配列データを持つ
+  short sval[MSG_SIZE + 4]; // short型で100個の配列データを持つ
+  uint8_t bval[MSG_BUFF + 4]; //1バイト単位で200個の配列データを持つ
 } UnionData;
 
-UnionData s_merdim_spi; //Meridim配列データ(short型、センサや角度は100倍値)
-UnionData r_merdim_spi; //Meridim配列データ(short型、センサや角度は100倍値)
-UnionData s_packet; //SPI送信用の共用体のインスタンスを作成
-UnionData r_packet; //SPI受信用の共用体のインスタンスを作成
+UnionData s_spi_meridim; //Meridim配列データ(short型、センサや角度は100倍値)
+UnionData r_spi_meridim; //Meridim配列データ(short型、センサや角度は100倍値)
+UnionData s_spi_meridim_dma; //SPI送信用の共用体のインスタンスを作成
+UnionData r_spi_meridim_dma; //SPI受信用の共用体のインスタンスを作成
 
 //MPU6050のアドレス、レジスタ設定値
 MPU6050 mpu;
@@ -227,7 +227,6 @@ int idr_n[15];//idrのニュートラル補正値（nはneutralの略）
 float idl_d[15];//idlの増減分（d）
 float idr_d[15];//idrの増減分（d）
 
-
 //-------------------------------------------------------------------------
 //---- 各 種 モ ー ド 設 定 0:OFF, 1:ON [S-4] -------------------------------
 //-------------------------------------------------------------------------
@@ -235,11 +234,11 @@ bool trim_adjust = 0; //トリムモードのオンオフ、起動時に下記�
 bool monitor_src = 0; //Teensyでのシリアル表示:送信ソースデータ
 bool monitor_send = 0; //Teensyでのシリアル表示:送信データ
 bool monitor_resv = 0; //Teensyでのシリアル表示:受信データ
-bool monitor_resv_check = 1; //Teensyでのシリアル表示:受信成功の可否
+bool monitor_resv_check = 0; //Teensyでのシリアル表示:受信成功の可否
 bool monitor_resv_error = 0; //Teensyでのシリアル表示:受信エラー率
 bool monitor_all_error = 0; //Teensyでのシリアル表示:全経路の受信エラー率
 bool monitor_rpy = 0; //Teensyでのシリアル表示:IMUからのrpy換算値
-bool monitor_joypad = 1; //Teensyでのシリアル表示:リモコンのデータ
+bool monitor_joypad = 0; //Teensyでのシリアル表示:リモコンのデータ
 
 void setup() {
   //-------------------------------------------------------------------------
@@ -349,21 +348,21 @@ void setup() {
   delay(100); merc = merc + 100; //ちょっと安定させるためのディレイ（要調整）
   krs_L.begin(); //サーボモータの通信初期設定。Serial2
   krs_R.begin(); //サーボモータの通信初期設定。Serial3
-  if (ICS3_MOUNT == 1) {
+  if (ICS3_MOUNT) {
     krs_3.begin(); //サーボモータの通信初期設定。Serial1
   }
   delay(100); merc = merc + 100; //ちょっと安定させるためのディレイ（要調整）
 
   //ESP32との通信用にSPI_MASTERを開始
-  TsyDMASPI0.begin(SS, SPISettings(6000000, MSBFIRST, SPI_MODE3)); //moved from "void loop(){}"
+  TsyDMASPI0.begin(SS, SPISettings(6000000, MSBFIRST, SPI_MODE3));
 
   //SDカードの初期化
 
   //配列のリセット
-  memset(s_merdim_spi.bval, 0, MSG_BUFF);//配列要素を0でリセット
-  memset(r_merdim_spi.bval, 0, MSG_BUFF);//配列要素を0でリセット
-  memset(s_packet.bval, 0, MSG_BUFF);//配列要素を0でリセット
-  memset(r_packet.bval, 0, MSG_BUFF);//配列要素を0でリセット
+  memset(s_spi_meridim.bval, 0, MSG_BUFF + 4); //配列要素を0でリセット
+  memset(r_spi_meridim.bval, 0, MSG_BUFF + 4); //配列要素を0でリセット
+  memset(s_spi_meridim_dma.bval, 0, MSG_BUFF + 4); //配列要素を0でリセット
+  memset(r_spi_meridim_dma.bval, 0, MSG_BUFF + 4); //配列要素を0でリセット
   memset(idl_d, 0, 15); //配列要素を0でリセット
   memset(idr_d, 0, 15); //配列要素を0でリセット
 
@@ -374,7 +373,7 @@ void setup() {
 
   //変数の設定
   YAW_ZERO = 0;
-  s_merdim_spi.sval[0] = MSG_SIZE ;//(トップコマンド）
+  s_spi_meridim.sval[0] = MSG_SIZE ;//(トップコマンド）
 
   //起動時のディレイ用mercちょい足し(サーボ起動待ち用)
   merc = merc + 3000;
@@ -383,24 +382,29 @@ void setup() {
 
 
 //-------------------------------------------------------------------------
-//---- 関 数 各 種  --------------------------------------------------------
+//---- 計 算 系 の 関 数 各 種  ---------------------------------------------
 //-------------------------------------------------------------------------
 
-// ■ サーボトリム調整 サーボオンで直立静止-------------------------------------
-void trimadjustment() {
-  while (true) {
-    for (int i = 0; i < 15; i++) {
-      if (idl_mt[i] == 1) {
-        krs_L.setPos(i, 7500 + (idl_n[i]*idl_pn[i]));
-      }
-      if (idr_mt[i] == 1) {
-        krs_R.setPos(i, 7500 + (idr_n[i]*idr_pn[i]));
-      }
-      delayMicroseconds(2);
-    }
-    delay(100);
-    Serial.println("Trim adjst mode.");
+// ■ チェックサムの算出関数 ----------------------------------------------------------
+short checksum_val(short arr[], int len) {
+  int cksm = 0;
+  for (int i = 0; i < len - 1; i++) {
+    cksm += int(arr[i]);
   }
+  //cksm = short(~cksm);
+  return ~cksm;
+}
+
+// ■ チェックサムの判定関数 ----------------------------------------------------------
+bool checksum_rslt(short arr[], int len) {
+  int cksm = 0;
+  for (int i = 0; i < len - 1; i++) {
+    cksm += int(arr[i]);
+  }
+  if (short(~cksm) == arr[len - 1]) {
+    return true;
+  }
+  return false;
 }
 
 // ■ degreeをKRS値に変換 -----------------------------------------------------
@@ -511,10 +515,31 @@ void getYawPitchRoll() {
   }
 }
 
+//-------------------------------------------------------------------------
+//---- コ マ ン ド 系 の 関 数 各 種  ----------------------------------------
+//-------------------------------------------------------------------------
+
+// ■ サーボトリム調整 サーボオンで直立静止-------------------------------------
+void trimadjustment() {
+  while (true) {
+    for (int i = 0; i < 15; i++) {
+      if (idl_mt[i] == 1) {
+        krs_L.setPos(i, 7500 + (idl_n[i]*idl_pn[i]));
+      }
+      if (idr_mt[i] == 1) {
+        krs_R.setPos(i, 7500 + (idr_n[i]*idr_pn[i]));
+      }
+      delayMicroseconds(2);
+    }
+    delay(100);
+    Serial.println("Trim adjst mode.");
+  }
+}
+
 // ■ ヨー軸の原点リセット --------------------------------------------------------
 void setyaw() {
   YAW_ZERO = ypr[0] * 180 / M_PI;
-  s_merdim_spi.sval[0] = MSG_SIZE;
+  s_spi_meridim.sval[0] = MSG_SIZE;
 }
 
 // ■ 全サーボオフ ---------------------------------------------------------------
@@ -534,7 +559,6 @@ void servo_all_off() {
   Serial.println("All servos off.");
 }
 
-
 // ■ JOYPAD処理 ---------------------------------------------------------------
 void joypad_read() {
   if (JOYPAD_MOUNT == 2) {//KRR5FH(KRC-5FH)をICS_R系に接続している場合
@@ -547,8 +571,6 @@ void joypad_read() {
       {
         button_1 = buttonData;
         if (monitor_joypad) {
-          //Serial.print("[Button] ");
-          //Serial.println(button_1);//ボタンデータを表示
 
           pad_btn = 0;
           if ((button_1 & 15) == 15) {//左側十時ボタン全部押しならstart押下とみなす
@@ -565,15 +587,13 @@ void joypad_read() {
           }
           //L1,L2,R1,R2
           pad_btn += ((button_1 & 2048) >> 11) * 2048 + ((button_1 & 4096) >> 12) * 512 +  ((button_1 & 512) >> 9) * 1024 + ((button_1 & 1024) >> 10) * 256;
-
-          //Serial.println(pad_btn, BIN); //ボタンデータを表示
-
         }
       }
       joypad_frame_count = 0;
     }
   }
 }
+
 //-------------------------------------------------------------------------
 //---- メ　イ　ン　ル　ー　プ ------------------------------------------------
 //-------------------------------------------------------------------------
@@ -582,7 +602,7 @@ void loop() {
 
   //---- < 0 > 受信SPIデータを送信SPIデータに転記 ----------------------------------------------
 
-  memcpy(s_merdim_spi.bval, r_merdim_spi.bval, MSG_BUFF + 4);
+  memcpy(s_spi_meridim.bval, r_spi_meridim.bval, MSG_BUFF + 4);
 
   //---- < 1 > センサー類読み取り ----------------------------------------------
 
@@ -596,15 +616,16 @@ void loop() {
   //---- < 2 > コントローラの読み取り 動作の設定 ---------------------------------
 
   // [2-1] コントローラの値を取得
-    if (JOYPAD_MOUNT == 1) {//SBDBTが接続設定されていれば受信チェック（未実装）
+  if (JOYPAD_MOUNT == 1) {//SBDBTが接続設定されていれば受信チェック（未実装）
     Serial.print("SBDBT connection has not been programmed yet.");
   }
-  
+
   if (JOYPAD_MOUNT == 2) {//KRC-5FH+KRR-5FHが接続設定されていれば受信チェック
     joypad_read();
-    r_merdim_spi.sval[80] = pad_btn;
-    s_merdim_spi.sval[80] = pad_btn;
+    r_spi_meridim.sval[80] = pad_btn;
+    s_spi_meridim.sval[80] = pad_btn;
   }
+
 
   //---- < 3 > Teensy内部で位置制御する場合の処理 --------------------------------
 
@@ -618,19 +639,19 @@ void loop() {
   //コマンド1: サーボオン 通常動作(3-1-1)
 
   //コマンド2: IMUのヨー軸設定(3-1-2)
-  if (r_merdim_spi.sval[0] == UPDATE_YAW_CENTER) {
+  if (r_spi_meridim.sval[0] == UPDATE_YAW_CENTER) {
     setyaw();
   }
 
   //コマンド3: トリムモードがオンもしくはコマンド3の時はループ
-  if ((trim_adjust == 1) or (r_merdim_spi.sval[0] == ENTER_TRIM_MODE)) {
+  if ((trim_adjust == 1) or (r_spi_meridim.sval[0] == ENTER_TRIM_MODE)) {
     trimadjustment();
   }
 
   // [3-2] 前回のラストに読み込んだサーボ位置をサーボ配列に書き込む
   for (int i = 0; i < 15; i++) {
-    s_KRS_servo_pos_L[i] = Deg2Krs(float(r_merdim_spi.sval[i * 2 + 21]) / 100 * idl_pn[i], idl_n[i]); //
-    s_KRS_servo_pos_R[i] = Deg2Krs(r_merdim_spi.sval[i * 2 + 51] / 100 * idr_pn[i], idr_n[i]); //
+    s_KRS_servo_pos_L[i] = Deg2Krs(float(r_spi_meridim.sval[i * 2 + 21]) / 100 * idl_pn[i], idl_n[i]); //
+    s_KRS_servo_pos_R[i] = Deg2Krs(r_spi_meridim.sval[i * 2 + 51] / 100 * idr_pn[i], idr_n[i]); //
   }
 
   // [3-3] Teensyによる次回動作の計算
@@ -640,6 +661,7 @@ void loop() {
   // [3-5] 移動時間の決定
 
   // [3-6] Teensy内計算による次回動作をMeridim配列に書き込む
+  
 
   //---- < 4 > サーボコマンドの書き込み ------------------------------------------
 
@@ -652,7 +674,7 @@ void loop() {
   for (int i = 0; i < 11; i ++) {//接続したサーボの数だけ繰り返す。最大は15
     idl_d[i] = 0;
     if (idl_mt[i] == true) {
-      if (r_merdim_spi.sval[(i * 2) + 20] == 1) {//受信配列のサーボコマンドが1ならPos指定
+      if (r_spi_meridim.sval[(i * 2) + 20] == 1) {//受信配列のサーボコマンドが1ならPos指定
         k = krs_L.setPos(i, s_KRS_servo_pos_L[i]);
       } else
       {
@@ -666,7 +688,7 @@ void loop() {
   for (int i = 0; i < 11; i ++) {//接続したサーボの数だけ繰り返す。最大は15
     idr_d[i] = 0;
     if (idr_mt[i] == true) {
-      if (r_merdim_spi.sval[(i * 2) + 50] == 1) {//受信配列のサーボコマンドが1ならPos指定
+      if (r_spi_meridim.sval[(i * 2) + 50] == 1) {//受信配列のサーボコマンドが1ならPos指定
         k = krs_R.setPos(i, s_KRS_servo_pos_R[i]);
       } else
       {
@@ -677,55 +699,51 @@ void loop() {
     delayMicroseconds(2);
   }
 
-  //---- < 5 > 送信用のMeridim配列を作成する -------------------------------------
+
+  //---- < 5 > SPI送信用のMeridim配列を作成する -------------------------------------
 
   // [5-1] マスターコマンドを配列に格納
-  //s_merdim_spi.sval[0] = MSG_SIZE ;//デフォルトのマスターコマンドは配列数
+  //s_spi_meridim.sval[0] = MSG_SIZE ;//デフォルトのマスターコマンドは配列数
 
   // [5-2] 移動時間を配列に格納
-  //s_merdim_spi.sval[1] = 10 ;//(移動時間）
+  //s_spi_meridim.sval[1] = 10 ;//(移動時間）
 
   // [5-3] センサー値を配列に格納
   if (IMU_MOUNT == 1) {
-    s_merdim_spi.sval[2] = float2HFshort(mpu_data[0]); //IMU_acc_x
-    s_merdim_spi.sval[3] = float2HFshort(mpu_data[1]); //IMU_acc_y
-    s_merdim_spi.sval[4] = float2HFshort(mpu_data[2]); //IMU_acc_z
-    s_merdim_spi.sval[5] = float2HFshort(mpu_data[3]); //IMU_gyro_x
-    s_merdim_spi.sval[6] = float2HFshort(mpu_data[4]); //IMU_gyro_y
-    s_merdim_spi.sval[7] = float2HFshort(mpu_data[5]); //IMU_gyro_z
-    s_merdim_spi.sval[8] = float2HFshort(mpu_data[6]); //IMU_mag_x
-    s_merdim_spi.sval[9] = float2HFshort(mpu_data[7]); //IMU_mag_y
-    s_merdim_spi.sval[10] = float2HFshort(mpu_data[8]);//IMU_mag_z
-    s_merdim_spi.sval[11] = float2HFshort(mpu_data[9]);//IMU_
-    s_merdim_spi.sval[12] = float2HFshort(ROLL);       //DMP_roll
-    s_merdim_spi.sval[13] = float2HFshort(PITCH);      //DMP_pitch
-    s_merdim_spi.sval[14] = float2HFshort(YAW);        //DMP_yaw
-    s_merdim_spi.sval[15] = float2HFshort(mpu_data[15]);//tempreature
+    s_spi_meridim.sval[2] = float2HFshort(mpu_data[0]); //IMU_acc_x
+    s_spi_meridim.sval[3] = float2HFshort(mpu_data[1]); //IMU_acc_y
+    s_spi_meridim.sval[4] = float2HFshort(mpu_data[2]); //IMU_acc_z
+    s_spi_meridim.sval[5] = float2HFshort(mpu_data[3]); //IMU_gyro_x
+    s_spi_meridim.sval[6] = float2HFshort(mpu_data[4]); //IMU_gyro_y
+    s_spi_meridim.sval[7] = float2HFshort(mpu_data[5]); //IMU_gyro_z
+    s_spi_meridim.sval[8] = float2HFshort(mpu_data[6]); //IMU_mag_x
+    s_spi_meridim.sval[9] = float2HFshort(mpu_data[7]); //IMU_mag_y
+    s_spi_meridim.sval[10] = float2HFshort(mpu_data[8]);//IMU_mag_z
+    s_spi_meridim.sval[11] = float2HFshort(mpu_data[9]);//IMU_
+    s_spi_meridim.sval[12] = float2HFshort(ROLL);       //DMP_roll
+    s_spi_meridim.sval[13] = float2HFshort(PITCH);      //DMP_pitch
+    s_spi_meridim.sval[14] = float2HFshort(YAW);        //DMP_yaw
+    s_spi_meridim.sval[15] = float2HFshort(mpu_data[15]);//tempreature
   }
 
   // [5-4] サーボIDごとにの現在位置もしくは計算結果を配列に格納
   for (int i = 0; i < 15; i++) {
-    s_merdim_spi.sval[i * 2 + 20] = 0; //仮にここでは各サーボのコマンドを脱力&ポジション指示(0)に設定
-    s_merdim_spi.sval[i * 2 + 21] = float2HFshort(idl_d[i]); //仮にここでは最新のサーボ角度degreeを格納
+    s_spi_meridim.sval[i * 2 + 20] = 0; //仮にここでは各サーボのコマンドを脱力&ポジション指示(0)に設定
+    s_spi_meridim.sval[i * 2 + 21] = float2HFshort(idl_d[i]); //仮にここでは最新のサーボ角度degreeを格納
   }
   for (int i = 0; i < 15; i++) {
-    s_merdim_spi.sval[i * 2 + 50] = 0; //仮にここでは各サーボのコマンドを脱力&ポジション指示(0)に設定
-    s_merdim_spi.sval[i * 2 + 51] = float2HFshort(idr_d[i]); //仮にここでは最新のサーボ角度degreeを格納
+    s_spi_meridim.sval[i * 2 + 50] = 0; //仮にここでは各サーボのコマンドを脱力&ポジション指示(0)に設定
+    s_spi_meridim.sval[i * 2 + 51] = float2HFshort(idr_d[i]); //仮にここでは最新のサーボ角度degreeを格納
   }
 
   // [5-5] カスタムデータを配列格納
 
   // [5-6] チェックサムを計算
-  checksum = 0;
-  for (int i = 0; i < MSG_SIZE - 1; i ++) {
-    checksum += s_merdim_spi.sval[i];
-  }
-  checksum = short(~checksum);//チェックサムを計算
-  s_merdim_spi.sval[MSG_SIZE - 1] = short(checksum);
+  s_spi_meridim.sval[MSG_SIZE - 1] = checksum_val(s_spi_meridim.sval, MSG_SIZE);
 
   // [5-7] 送信データのSPIバッファへのバイト型書き込み
   for (int i = 0; i < MSG_BUFF; i++) {
-    s_packet.bval[i] = s_merdim_spi.bval[i];
+    s_spi_meridim_dma.bval[i] = s_spi_meridim.bval[i];
   }
 
 
@@ -735,7 +753,7 @@ void loop() {
   if (monitor_src == 1) {
     Serial.print("   [Src] ");
     for (int i = 0; i < MSG_SIZE; i++) {
-      Serial.print(int (s_merdim_spi.sval[i]));
+      Serial.print(int (s_spi_meridim.sval[i]));
       Serial.print(",");
     }
     Serial.println();
@@ -743,48 +761,38 @@ void loop() {
   if (monitor_send == 1) {
     Serial.print("  [Send] ");
     for (int i = 0; i < MSG_BUFF; i++) {
-      Serial.print(int (s_packet.bval[i]));
+      Serial.print(int (s_spi_meridim_dma.bval[i]));
       Serial.print(",");
     }
     Serial.println();
   }
 
+  //Serial.println(s_spi_meridim_dma.sval[80], BIN); //受信したリモコンのボタンデータをモニタリング
 
-  Serial.println(s_packet.sval[80], BIN); //send button data
+  // [6-2] ESP32とのSPI送受信の実行
+  if (ESP32_MOUNT) {
+    TsyDMASPI0.transfer(s_spi_meridim_dma.bval, r_spi_meridim_dma.bval, MSG_BUFF);
 
-  // [6-2] ESP32へのSPI送信の実行
-  if (ESP32_MOUNT == 1) {
-    TsyDMASPI0.transfer(s_packet.bval, r_packet.bval, MSG_BUFF);
+    spi_trial ++;//SPI送受信回数のカウント
 
     // [6-3] ESP32からのSPI受信データチェックサム確認と成否のシリアル表示
-    int checksum = 0;
-    for (int i = 0; i < MSG_SIZE - 1; i++) {
-      checksum += int(r_packet.sval[i]);
-      Serial.print(r_packet.sval[i]);
-      Serial.print(",");
-
-    } Serial.println();
-    checksum = short(~checksum);//チェックサムを計算
-    spi_trial ++;
-    Serial.println(checksum);
-    Serial.println(r_packet.sval[MSG_SIZE - 1]);
-
-    if (r_packet.sval[MSG_SIZE - 1] == checksum)//チェックがOKならバッファから受信配列に転記
+    //チェックサムがOKならバッファから受信配列に転記
+    if (checksum_rslt(r_spi_meridim_dma.sval, MSG_SIZE))
     {
-      if (monitor_resv_check == 1) {
+      if (monitor_resv_check) {
         Serial.println("Rvok! ");//受信OKのシリアル表示
       }
       for (int i = 0; i < MSG_SIZE; i++) {
-        r_merdim_spi.sval[i] = r_packet.sval[i];
+        r_spi_meridim.sval[i] = r_spi_meridim_dma.sval[i];
       }
       spi_ok ++;
     } else
     {
-      if (monitor_resv_check == 1) {
-        Serial.println("RvNG****");//受信のシリアル表示
+      if (monitor_resv_check) {
+        Serial.println("RvNG****");//受信NGのシリアル表示
       }
     }
-    if (monitor_resv_error == 1) {
+    if (monitor_resv_error) {
       if (spi_trial % 200 == 0) { //エラー率の表示
         Serial.print("error rate ");
         Serial.print(float(spi_trial - spi_ok) / float(spi_trial) * 100);
@@ -796,10 +804,10 @@ void loop() {
     }
 
     // [6-4] シリアルモニタ表示（受信データ）
-    if (monitor_resv == 1) {
+    if (monitor_resv) {
       Serial.print("  [Resv] ");
       for (int i = 0; i < MSG_SIZE; i++) {
-        Serial.print(int (r_merdim_spi.sval[i]));
+        Serial.print(int (r_spi_meridim.sval[i]));
         Serial.print(",");
       }
       Serial.println();
