@@ -1,11 +1,9 @@
 
-//Meridian_core_for_Teensy_2022.1.31
+//Meridian_core_for_Teensy_2022.2.06
 //This code is for Teensy 4.0
-//PC計測200Hz以上での安定動作を確認
 //
 //MeridianControlPanelDPG対応
-//マスターコマンド改訂 (S-3-3)
-//KRC-5FH改訂(S-3-5)
+//Futaba対応は準備中
 
 /*
   -------------------------------------------------------------------------
@@ -131,7 +129,7 @@
 #define ICS3_MOUNT 0 //半二重サーボ信号の3系のありなし
 
 //その他の基本設定 (S-3-2) ---------------------------------
-#define FRAME_DURATION 5//1フレームあたりの単位時間（単位ms）
+#define FRAME_DURATION 10//1フレームあたりの単位時間（単位ms）
 #define MSG_SIZE 90 //Meridim配列の長さ設定（デフォルトは90）
 #define ERR_LED 2 //LED用 処理が時間内に収まっていない場合に点灯
 #define SERIAL_PC 60000000 //PCとのシリアル速度（モニタリング表示用）
@@ -201,9 +199,18 @@ VectorInt16 mag;        // [x, y, z]            磁力センサの測定値
 long temperature;         // センサの温度測定値
 
 //ICSサーボのインスタンス設定
-IcsHardSerialClass krs_L(&Serial2, EN_L_PIN, BAUDRATE, TIMEOUT);
-IcsHardSerialClass krs_R(&Serial3, EN_R_PIN, BAUDRATE, TIMEOUT);
-IcsHardSerialClass krs_3(&Serial1, EN_3_PIN, BAUDRATE, TIMEOUT);//3系もICSの場合
+
+//ICS_L系統UARTの設定(Seirial2)
+IcsHardSerialClass krs_L(&Serial2, EN_L_PIN, BAUDRATE, TIMEOUT);//近藤ICS
+//futaba
+
+//ICS_R系統UARTの設定(Serial3)
+IcsHardSerialClass krs_R(&Serial3, EN_R_PIN, BAUDRATE, TIMEOUT);//近藤ICS
+//futaba
+
+//ICS_3系統UARTの設定(Serial1)
+IcsHardSerialClass krs_3(&Serial1, EN_3_PIN, BAUDRATE, TIMEOUT);//近藤ICS
+//futaba
 
 //KRSサーボのポジション用配列(degreeではなくサーボ値が入る)
 int s_KRS_servo_pos_L[] = {7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500}; //15要素
@@ -244,7 +251,7 @@ void setup() {
   //-------------------------------------------------------------------------
   //---- サ ー ボ 設 定 [S-5] ------------------------------------------------
   //-------------------------------------------------------------------------
-  //各サーボのマウントありなし（1:サーボあり、0:サーボなし）
+  //各サーボのマウントありなし（0:サーボなし、1:ICS_L系、2:ICS_R系、3:ICS_3系）
   idl_mt[0]  = 1; //頭ヨー
   idl_mt[1]  = 1; //左肩ピッチ
   idl_mt[2]  = 1; //左肩ロール
@@ -275,7 +282,7 @@ void setup() {
   idr_mt[12] = 0; //追加テスト用
   idr_mt[13] = 0; //追加テスト用
   idr_mt[14] = 0; //追加テスト用
-
+  
   //各サーボの内外回転プラマイ方向補正
   idl_pn[0]  = +1;//頭ヨー
   idl_pn[1]  = +1;//左肩ピッチ
@@ -661,7 +668,7 @@ void loop() {
   // [3-5] 移動時間の決定
 
   // [3-6] Teensy内計算による次回動作をMeridim配列に書き込む
-  
+
 
   //---- < 4 > サーボコマンドの書き込み ------------------------------------------
 
@@ -785,9 +792,14 @@ void loop() {
       for (int i = 0; i < MSG_SIZE; i++) {
         r_spi_meridim.sval[i] = r_spi_meridim_dma.sval[i];
       }
+      //ここでこのパートのエラーフラグも消す
+      r_spi_meridim.bval[177] &= 0b11011111;//meridimの[88]番の13ビット目(TsyのUPD受信成否)のフラグを下げる
+
       spi_ok ++;
     } else
     {
+      // ● 受信失敗ならUDP受信データをSPI送信データに上書き更新せず、前回のSPI送信データにエラーフラグだけ上乗せする
+      r_spi_meridim.bval[177] |= 0b00100000;//meridimの[88]番の13ビット目(ESPのUPD受信成否)のフラグを上げる
       if (monitor_resv_check) {
         Serial.println("RvNG****");//受信NGのシリアル表示
       }
