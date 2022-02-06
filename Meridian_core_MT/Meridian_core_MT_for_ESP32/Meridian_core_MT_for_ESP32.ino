@@ -1,6 +1,9 @@
-// Meridian_core_for_ESP32_MT_20220201
+// Meridian_core_for_ESP32_MT_20220204 By Izumi Ninagawa & Meridian Project
+// MIT Licenced.
+//
 // Teensy4.0 - (SPI) - ESP32DevKitC - (Wifi/UDP) - PC/python
 // ESP32用のマルチスレッド化したMeiridian_core
+// PS4コントローラ対応修正済み
 
 //[E-2] ライブラリ導入 -----------------------------------
 #include <WiFi.h>//UDPの設定
@@ -12,15 +15,25 @@ ESP32DMASPI::Slave slave;
 #include <ESP32Wiimote.h>
 ESP32Wiimote wiimote;
 
-//[E-3] 各種設定 #DEFINE ---------------------------------
+//PS4用を新規接続するためのペアリング情報解除設定
+#include "esp_bt_main.h"
+#include "esp_bt_device.h"
+#include "esp_gap_bt_api.h"
+#include "esp_err.h"
+#define REMOVE_BONDED_DEVICES 1 // 0でバインドデバイス情報表示、1でバインドデバイス情報クリア(BTリモコンがペアリング接続できない時に使用)
+#define PAIR_MAX_DEVICES 20
+uint8_t pairedDeviceBtAddr[PAIR_MAX_DEVICES][6];
+char bda_str[18];
+
+//[E-3] 各種設定 ３#DEFINE ---------------------------------
 #define MSG_SIZE 90 //Meridim配列の長さ設定（デフォルトは90）
-#define AP_SSID "xxxxxxxx" //アクセスポイントのAP_SSID(2.4GhzのAPに接続)
-#define AP_PASS "xxxxxxxx" //アクセスポイントのパスワード
-#define SEND_IP "192.168.1.29" //送り先のPCのIPアドレス（PCのIPアドレスを調べておく）
+#define AP_SSID "xxxxxx" //アクセスポイントのAP_SSID
+#define AP_PASS "xxxxxx" //アクセスポイントのパスワード
+#define SEND_IP "192.168.1.xx" //送り先のPCのIPアドレス（PCのIPアドレスを調べておく）
 #define SEND_PORT 22222 //送り先のポート番号
 #define RESV_PORT 22224 //このESP32のポート番号
-#define JOYPAD_MOUNT 2 ////ジョイパッドの搭載 0:なし、1:Wii_yoko, 2:Wii+Nun, 3:PS3, 4:PS4, 5:WiiPRO, 6:Xbox
-#define JOYPAD_POLLING 10 ////ジョイパッドの問い合わせフレーム間隔(ms)
+#define JOYPAD_MOUNT 0 ////ジョイパッドの搭載 0:なし、1:Wii_yoko, 2:Wii+Nun, 3:PS3, 4:PS4, 5:WiiPRO, 6:Xbox
+//#define JOYPAD_POLLING 10 ////ジョイパッドの問い合わせフレーム間隔(ms)
 
 //変数一般
 static const int MSG_BUFF = MSG_SIZE * 2;
@@ -73,20 +86,6 @@ void setup()
   delay(130);//シリアルの開始を待ち安定化させるためのディレイ（ほどよい）
   Serial.println("Serial Start...");
 
-  //コントローラの接続開始
-  //PS4コントローラの接続開始
-  if (JOYPAD_MOUNT == 4) {
-    PS4.begin("e8:68:e7:30:b4:52");//ESP32のMACが入ります.PS4にも設定します。
-    Serial.println("PS4 controller connecting...");
-  }
-  //Wiiコントローラの接続開始
-  if ((JOYPAD_MOUNT == 1) or (JOYPAD_MOUNT == 2)) {
-    wiimote.init();
-    wiimote.addFilter(ACTION_IGNORE, FILTER_NUNCHUK_ACCEL);
-    Serial.println("Wiimote connecting...");
-  }
-  //delay(1000);
-
   //WiFi 初期化
   WiFi.disconnect(true, true);//WiFi接続をリセット
   Serial.println("Connecting to WiFi to : " + String(AP_SSID));//接続先を表示
@@ -100,13 +99,51 @@ void setup()
   Serial.println(WiFi.localIP());//ESP32自身のIPアドレスの表示
 
   //ESP32自身のBluetoothMacアドレスを表示
-  uint8_t bt_mac[6];
-  String self_mac_address = "";
+  initBluetooth();
+  Serial.print("ESP32's Bluetooth Mac Address is => ");
+  Serial.println(bda2str(esp_bt_dev_get_address(), bda_str, 18));
 
-  esp_read_mac(bt_mac, ESP_MAC_BT);
-  self_mac_address = String(bt_mac[0], HEX) + ":" + String(bt_mac[1], HEX) + ":" + String(bt_mac[2], HEX) + ":" + String(bt_mac[3], HEX) + ":" + String(bt_mac[4], HEX) + ":" + String(bt_mac[5], HEX);
-  Serial.print("ESP32's Bluetooth Mac Address is => " + self_mac_address);
-  Serial.println();
+  // BTペアリング情報
+  int count = esp_bt_gap_get_bond_device_num();
+  if (!count) {
+    Serial.println("No bonded BT device found.");
+  } else {
+    Serial.print("Bonded BT device count: "); Serial.println(count);
+    if (PAIR_MAX_DEVICES < count) {
+      count = PAIR_MAX_DEVICES;
+      Serial.print("Reset bonded device count: "); Serial.println(count);
+    }
+    esp_err_t tError =  esp_bt_gap_get_bond_device_list(&count, pairedDeviceBtAddr);
+    if (ESP_OK == tError) {
+      for (int i = 0; i < count; i++) {
+        Serial.print("Found bonded BT device # "); Serial.print(i); Serial.print(" -> ");
+        Serial.println(bda2str(pairedDeviceBtAddr[i], bda_str, 18));
+        if (REMOVE_BONDED_DEVICES) {
+          esp_err_t tError = esp_bt_gap_remove_bond_device(pairedDeviceBtAddr[i]);
+          if (ESP_OK == tError) {
+            Serial.print("Removed bonded BT device # ");
+          } else {
+            Serial.print("Failed to remove bonded BT device # ");
+          }
+          Serial.println(i);
+        }
+      }
+    }
+  }
+
+  //コントローラの接続開始
+  //PS4コントローラの接続開始
+  if (JOYPAD_MOUNT == 4) {
+    PS4.begin("e8:68:e7:30:b4:52");//ESP32のMACが入ります.PS4にも設定します。
+    Serial.println("PS4 controller connecting...");
+  }
+  //Wiiコントローラの接続開始
+  if ((JOYPAD_MOUNT == 1) or (JOYPAD_MOUNT == 2)) {
+    wiimote.init();
+    wiimote.addFilter(ACTION_IGNORE, FILTER_NUNCHUK_ACCEL);
+    Serial.println("Wiimote connecting...");
+  }
+  //delay(1000);
 
   //UDP通信の開始
   udp.begin(RESV_PORT);
@@ -149,6 +186,38 @@ void setup()
 //-------------------------------------------------------------------------
 //---- 関 数 各 種  --------------------------------------------------------
 //-------------------------------------------------------------------------
+
+// ■ Bluetoothペアリング設定用 -----
+bool initBluetooth()
+{
+  if (!btStart()) {
+    Serial.println("Failed to initialize controller");
+    return false;
+  }
+
+  if (esp_bluedroid_init() != ESP_OK) {
+    Serial.println("Failed to initialize bluedroid");
+    return false;
+  }
+
+  if (esp_bluedroid_enable() != ESP_OK) {
+    Serial.println("Failed to enable bluedroid");
+    return false;
+  }
+  return true;
+}
+
+// ■ Bluetoothペアリングアドレス取得用 -----
+char *bda2str(const uint8_t* bda, char *str, size_t size)
+{
+  if (bda == NULL || str == NULL || size < 18) {
+    return NULL;
+  }
+  sprintf(str, "%02x:%02x:%02x:%02x:%02x:%02x",
+          bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
+  return str;
+}
+
 
 // ■ 受信用の関数 パケットが来ていれば、MSG_BUFF 分だけr_udp_meridim.bval配列に保存 -----
 void receiveUDP() {
@@ -297,10 +366,16 @@ void Wiipad_receive_h() {
 
     if (JOYPAD_MOUNT == 2) {
       NunchukState nunchuk = wiimote.getNunchukState();
-      pad_stick_L = (nunchuk.xStick * 256 + nunchuk.yStick);
+      int calib_l1x = 5;//LスティックX軸のセンターのキャリブレーション値
+      int calib_l1y = -6;//LスティックY軸のセンターのキャリブレーション値
+      pad_stick_L = ((nunchuk.xStick+calib_l1x-127) * 256 + (nunchuk.yStick-127+calib_l1y));
       if (nunchuk.cBtn == 1) pad_btn |= (B00000100 * 256) + B00000000;
       if (nunchuk.zBtn == 1) pad_btn |= (0x00000001 * 256) + B00000000;
     }
+    Serial.print(127-nunchuk.xStick);
+    Serial.print(",");
+    Serial.println(nunchuk.yStick-127);
+
     delay(2);//ここの数値でCPU負荷を軽減できるかも
   }
 }
@@ -311,7 +386,14 @@ void Wiipad_receive_h() {
 
 void Core0_BT_r(void *args) {//サブCPU(Core0)で実行するプログラム
   while (1) {//ここで無限ループを作っておく
-    Wiipad_receive_h();
+    //コントローラの受信ループ
+    if (JOYPAD_MOUNT == 4) {
+      PS4pad_receive();
+    }
+    //Wiiコントローラの受信ループ
+    if ((JOYPAD_MOUNT == 1) or (JOYPAD_MOUNT == 2)) {
+      Wiipad_receive_h();
+    }
     delay(1);//JOYPAD_POLLING ms秒待つ
   }
 }
@@ -337,7 +419,7 @@ void loop()
       memcpy(s_spi_meridim.bval, r_udp_meridim.bval, MSG_BUFF + 4);
       //ここでこのパートのエラーフラグも消す
       s_spi_meridim.bval[177] &= 0b10111111;//meridimの[88]番の14ビット目(ESPのUPD受信成否)のフラグを下げる
-      Serial.println("UDPrvOK");
+      //Serial.println("UDPrvOK");
     } else {
       // ● 受信失敗ならUDP受信データをSPI送信データに上書き更新せず、前回のSPI送信データにエラーフラグだけ上乗せする
       s_spi_meridim.bval[177] |= 0b01000000;//meridimの[88]番の14ビット目(ESPのUPD受信成否)のフラグを上げる
@@ -395,7 +477,7 @@ void loop()
 
   //---- < 4 > U D P 送 信 信 号 作 成 ----------------------------------------
   if (spi_resv_flag == 1) {//SPI受信完了フラグが立っていればUDP送信スレッドにフラグで知らせる
-    
+
     //[4-1] 受信したSPI送信データをUDP送信データに転記
     memcpy(s_udp_meridim.bval, r_spi_meridim_dma, MSG_BUFF + 4);
     // ● UDP送信データ"s_udp_meridim"に中身が入った状態
