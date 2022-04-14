@@ -481,7 +481,7 @@ def dpgrun():
         dpg.set_value("pad_Lx", r_meridim_disp_char[163])
         dpg.set_value("pad_Ly", r_meridim_disp_char[162])
         dpg.set_value("pad_Rx", r_meridim_disp_char[165])
-        dpg.set_value("pad_Ry", r_meridim_disp_char[164])Meridian_console_v22_0415.py
+        dpg.set_value("pad_Ry", r_meridim_disp_char[164])
         padL2val = (r_meridim_disp_char[167])
         if (padL2val<0):
             padL2val = 256+padL2val
