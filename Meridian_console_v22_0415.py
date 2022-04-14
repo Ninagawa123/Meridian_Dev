@@ -9,6 +9,28 @@
 #2022.04.14 各経路でのエラーの検知と表示の機能を搭載
 #2022.04.14 ROSのパブリッシュボタンを追加。ROSのサブスクライブは未実装。
 
+# 取扱説明書
+# ・起動方法
+# 当ファイルがあるディレクトリにて、ターミナルより
+# python3 Meridian_console_v22_0415.py
+# と入力して実行します。必要に応じてライブラリをpip3で追加してください。
+# UDP_RESV_IP,UDP_SEND_IPについては予め調べスクリプト上で書き換えておく必要があります。
+# UDP_RESV_IPはターミナルにてip a もしくはipconfig,ifconfig等で調べられます。
+# UDP_SEND_IPはESP32の起動時にPCシリアルモニタ上に表示されます。
+# ・画面について
+# Command画面
+#  POWER: 全サーボのパワーをオンオフします
+#  Action: サインカーブの首振りモーションを送信します
+#  ->ROS1: ROS1のjointデータをパブリッシュします（Rvisと連動できます）
+#  <-ROS1: ROS1のサブスクライブですが未実装です。
+#  Control Pad Monitor: リモコンの入力状態を標準化して表示します。
+# Message画面
+# IPと各経路のエラーカウント、エラー率、フレーム数、動作周波数を表示します
+#  ResetCounter: カウンタの値をリセットするボタンです。
+#  TsySKIP, PcSKIP: 連番データの取りこぼし数を表示します（今はちょっと多めです。周波数を50Hzまで下げるとゼロになります。）
+#  Sensor Monitor: MIUのデータを表示します。rol,pit,yawはセンサフュージョン値です。SetYawボタンでヨー軸の中央値をリセットできます。
+#  Axis Monitor: 各サーボの値です。パワーオン時にはスライダでサーボを動かすことができます。
+
 from ast import Pass
 import numpy as np
 import socket
