@@ -50,9 +50,9 @@ long error_count_spi = 0;//SPI受信エラーカウント用
 uint8_t* s_spi_meridim_dma;//DMA用
 uint8_t* r_spi_meridim_dma;//DMA用
 
-//long count1 = 0;//ボトムネック計測用
-//long count2 = 0;//ボトムネック計測用
-//long count3 = 0;//ボトムネック計測用
+//long count1 = 0;//ボトルネック計測用
+//long count2 = 0;//ボトルネック計測用
+//long count3 = 0;//ボトルネック計測用
 
 
 //フラグ関連
