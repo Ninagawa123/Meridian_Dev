@@ -7,29 +7,43 @@
 // UDP送受、UDP送信、両方ともスレッド化し、フラグによりデータの流れを円滑化
 // ただしBTを同時接続するとエラーでデータが欠損するので、リモコンは一旦わすれる。
 // リモコンの運用は今後、PC-UDP接続時はPC側でリモコン処理、
-// PCレスのスタンドアロン時はESP32でBTを使い、Wifiをキャンセル（未導入）で対応する。
+// PCレスのスタンドアロン時はESP32でBTを使い、Wiiをキャンセル（未導入）で対応する。
 
-//[SETTING] 各種設定 ---------------------------------
+
+//---------------------------------------------------
+// [SETTING] 各種設定 (ES-1) -------------------------
+//---------------------------------------------------
+
+// (ES-1-1) 変更頻度高め
 #define VERSION "Meridian_core_for_ESP32_2022.04.16"//バージョン表示
-
-//WiFi関連
 #define AP_SSID "xxxxxx" //アクセスポイントのAP_SSID
 #define AP_PASS "xxxxxx" //アクセスポイントのパスワード
 #define SEND_IP "192.168.1.xx" //送り先のPCのIPアドレス（PCのIPアドレスを調べておく）
 
-//各種初期設定
+// (ES-1-2) シリアルモニタリング切り替え
+//-特になし-
+
+// (ES-1-3) マウント有無とピンアサイン
+//-特になし-
+
+// (ES-1-4) 各種初期設定
 #define JOYPAD_MOUNT 0 //ジョイパッドの搭載 0:なし、1:Wii_yoko, 2:Wii+Nun, 3:PS3, 4:PS4, 5:WiiPRO, 6:Xbox
 //#define JOYPAD_POLLING 10 ////ジョイパッドの問い合わせフレーム間隔(ms)
 #define MSG_SIZE 90 //Meridim配列の長さ設定（デフォルトは90）
 #define SERIAL_PC 2000000 //ESP-PC間のシリアル速度（モニタリング表示用）
 
-//その他固定値
+// (ES-1-5) その他固定値
 #define SEND_PORT 22222 //送り先のポート番号
 #define RESV_PORT 22224 //このESP32のポート番号
 #define REMOVE_BONDED_DEVICES 0 //0でバインドデバイス情報表示、1でバインドデバイス情報クリア(BTリモコンがペアリング接続できない時に使用)
 #define PAIR_MAX_DEVICES 20 //接続デバイスの記憶可能数
 
-//[LIBRARY] ライブラリ関連 -----------------------------------
+
+//---------------------------------------------------
+// [LIBRARY] ライブラリ関連 (ES-2-LIB) ----------------
+//---------------------------------------------------
+
+// (ES-2-1) ライブラリ全般
 #include <WiFi.h>//UDPの設定
 #include <WiFiUdp.h>//UDPの設定
 WiFiUDP udp;//wifi設定
@@ -40,7 +54,7 @@ ESP32DMASPI::Slave slave;
 ESP32Wiimote wiimote;
 //#include <FastCRC.h>
 
-//PS4用を新規接続するためのペアリング情報解除設定
+// (ES-2-2) PS4用を新規接続するためのペアリング情報解除設定
 #include "esp_bt_main.h"
 #include "esp_bt_device.h"
 #include "esp_gap_bt_api.h"
@@ -48,8 +62,12 @@ ESP32Wiimote wiimote;
 uint8_t pairedDeviceBtAddr[PAIR_MAX_DEVICES][6];
 char bda_str[18];
 
-//[VARIABLE] 変数関連 -----------------------------------
-//変数一般
+
+//---------------------------------------------------
+// [VARIABLE] 変数関連 (ES-3-VAL) --------------------
+//---------------------------------------------------
+
+// (ES-3-1) 変数一般
 static const int MSG_BUFF = MSG_SIZE * 2;
 int checksum; //チェックサム計算用
 long frame_count = 0;
@@ -59,7 +77,7 @@ uint8_t* s_spi_meridim_dma;//DMA用
 uint8_t* r_spi_meridim_dma;//DMA用
 TaskHandle_t thp[4];//マルチスレッドのタスクハンドル格納用
 
-//フラグ関連
+// (ES-3-2) フラグ関連
 bool udp_resv_flag = 0;//UDPスレッドでの受信完了フラグ
 bool udp_resv_process_queue_flag = 0;//UDP受信済みデータの処理待ちフラグ
 bool udp_send_flag = 0;//UDP送信完了フラグ
@@ -67,7 +85,7 @@ bool spi_resv_flag = 0;//SPI受信完了フラグ
 bool udp_resv_busy = 0;//UDPスレッドでの受信中フラグ（送信抑制）
 bool udp_send_busy = 0;//UDPスレッドでの送信中フラグ（受信抑制）
 
-//共用体の設定。共用体はたとえばデータをショートで格納し、バイト型として取り出せる
+// (ES-3-3) 共用体の設定. 共用体はたとえばデータをショートで格納し,バイト型として取り出せる
 typedef union
 {
   short sval[MSG_SIZE + 2];
@@ -78,7 +96,7 @@ UnionData r_spi_meridim; //SPI受信用共用体
 UnionData s_udp_meridim; //UDP送信用共用体
 UnionData r_udp_meridim; //UDP受信用共用体
 
-//コントローラー用変数
+// (ES-3-4) コントローラー用変数
 unsigned short pad_btn = 0;
 short pad_stick_R = 0;
 short pad_stick_R_x = 0;
@@ -93,34 +111,35 @@ long pad_btn_disp = 65536;//ディスプレイ表示用（バイナリ表示の�
 
 void setup()
 {
-  Serial.begin(SERIAL_PC);
-  delay(130);//シリアルの開始を待ち安定化させるためのディレイ（ほどよい）
-  Serial.println("Serial Start...");
+  //-------------------------------------------------------------------------
+  //---- (ES-4) 起動時設定 --------------------------------------------------
+  //-------------------------------------------------------------------------
 
-  //バージョン表示
-  Serial.println(VERSION);
-
-  //WiFi 初期化
+  // (ES-4-1) WiFi 初期化
   WiFi.disconnect(true, true);//WiFi接続をリセット
-  Serial.println("Connecting to WiFi to : " + String(AP_SSID));//接続先を表示
-  delay(100);
   WiFi.begin(AP_SSID, AP_PASS);//WiFiに接続
   while ( WiFi.status() != WL_CONNECTED) {//https://www.arduino.cc/en/Reference/WiFiStatus 返り値一覧
     delay(50);//接続が完了するまでループで待つ
   }
+  
+  // (ES-4-2) シリアル設定
+  Serial.begin(SERIAL_PC);
+  delay(130);//シリアルの開始を待ち安定化させるためのディレイ（ほどよい）
+  Serial.println("Serial Start...");
+  
+  // (ES-4-3) シリアル表示
+  Serial.println(VERSION); //バージョン表示
+  Serial.println("Connecting to WiFi to : " + String(AP_SSID));//接続先を表示
   Serial.println("WiFi connected.");//WiFi接続完了通知
-  Serial.print("ESP32's IP address is  => ");
-  Serial.println(WiFi.localIP());//ESP32自身のIPアドレスの表示
-
-  Serial.print("Set PC's IP address    => ");
-  Serial.println(SEND_IP);//ESP32自身のIPアドレスの表示
-
-  //ESP32自身のBluetoothMacアドレスを表示
+  Serial.print("ESP32's IP address is  => ");//ESP32自身のIPアドレスの表示
+  Serial.println(WiFi.localIP());
+  Serial.print("Set PC's IP address    => ");//接続先PCのIPアドレスの表示
+  Serial.println(SEND_IP);
   initBluetooth();
-  Serial.print("ESP32's Bluetooth Mac Address is => ");
+  Serial.print("ESP32's Bluetooth Mac Address is => ");//ESP32自身のBluetoothMacアドレスを表示
   Serial.println(bda2str(esp_bt_dev_get_address(), bda_str, 18));
 
-  // BTペアリング情報
+  // (ES-4-4) BTペアリング情報
   int bt_count = esp_bt_gap_get_bond_device_num();
   if (!bt_count) {
     Serial.println("No bonded BT device found.");
@@ -148,35 +167,34 @@ void setup()
     }
   }
 
-  //コントローラの接続開始
-  //PS4コントローラの接続開始
+  // (ES-4-5) コントローラの接続開始
+  // (ES-4-5-1) PS4コントローラの接続開始
   if (JOYPAD_MOUNT == 4) {
     PS4.begin("e8:68:e7:30:b4:52");//ESP32のMACが入ります.PS4にも設定します。
     Serial.println("PS4 controller connecting...");
   }
 
-  //Wiiコントローラの接続開始
+  // (ES-4-5-2) Wiiコントローラの接続開始
   if ((JOYPAD_MOUNT == 1) or (JOYPAD_MOUNT == 2)) {
     wiimote.init();
     wiimote.addFilter(ACTION_IGNORE, FILTER_NUNCHUK_ACCEL);
     Serial.println("Wiimote connecting...");
   }
-  //delay(1000);
 
-  //UDP通信の開始
+  // (ES-4-6) UDP通信の開始
   udp.begin(RESV_PORT);
   delay(500);
 
-  //DMAバッファを使う設定　これを使うと一度に送受信できるデータ量を増やせる
+  // (ES-4-7) DMAバッファを使う設定　これを使うと一度に送受信できるデータ量を増やせる
   s_spi_meridim_dma = slave.allocDMABuffer(MSG_BUFF + 4); //DMAバッファ設定
   r_spi_meridim_dma = slave.allocDMABuffer(MSG_BUFF + 4); //DMAバッファ設定
   //※バッファサイズは4で割り切れる必要があり、なおかつ末尾に4バイト分0が入る不具合があるのでその対策
 
-  // 送受信バッファをリセット
+  // (ES-4-8) 送受信バッファをリセット
   memset(s_spi_meridim_dma, 0, MSG_BUFF + 4);// ※+4は不具合対策
   memset(r_spi_meridim_dma, 0, MSG_BUFF + 4);
 
-  //初回の送信データを作成してセット
+  // (ES-4-9) 初回の送信データを作成してセット
   checksum = 0;
   for (int i = 0; i < MSG_SIZE - 1; i++) //配列の末尾以外にデータを入れる
   {
@@ -189,11 +207,12 @@ void setup()
     s_spi_meridim_dma[i] = s_spi_meridim.bval[i] ;
   }
 
-  //ここでスレッドを立てる宣言（無線系はすべてCORE0で動くとのこと.メインループはCORE1）
+  // (ES-4-10) マルチスレッドの宣言（無線系はすべてCORE0で動くとのこと.メインループはCORE1）
   xTaskCreatePinnedToCore(Core0_UDP_s, "Core0_UDP_s", 4096, NULL, 10, &thp[0], 0);
   xTaskCreatePinnedToCore(Core0_UDP_r, "Core0_UDP_r", 4096, NULL, 20, &thp[1], 0);
   xTaskCreatePinnedToCore(Core0_BT_r, "Core0_BT_r", 4096, NULL, 5, &thp[2], 0);
 
+  // (ES-4-11) SPI通信の設定
   slave.setDataMode(SPI_MODE3);
   slave.setMaxTransferSize(MSG_BUFF + 4);
   slave.setDMAChannel(2); // 専用メモリの割り当て(1か2のみ)
