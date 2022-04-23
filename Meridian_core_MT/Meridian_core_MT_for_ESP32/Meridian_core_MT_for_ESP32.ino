@@ -1,41 +1,80 @@
-// Meridian_core_for_ESP32_MT_20220204 By Izumi Ninagawa & Meridian Project
+// Meridian_core_for_ESP32_2022.04.23 By Izumi Ninagawa & Meridian Project
 // MIT Licenced.
 //
 // Teensy4.0 - (SPI) - ESP32DevKitC - (Wifi/UDP) - PC/python
 // ESP32用のマルチスレッド化したMeiridian_core
-// PS4コントローラ対応修正済み
+// PS4コントローラ再対応
+// UDP送受、UDP送信、両方ともスレッド化し、フラグによりデータの流れを円滑化
+// ただしBTを同時接続するとエラーでデータが欠損するので、リモコンは一旦わすれる。
+// リモコンの運用は今後、PC-UDP接続時はPC側でリモコン処理、
+// PCレスのスタンドアロン時はESP32でBTを使い、Wiiをキャンセル（未導入）で対応する。
+// IP固定化の要素を追加。
 
-//[E-2] ライブラリ導入 -----------------------------------
+
+//---------------------------------------------------
+// [SETTING] 各種設定 (ES-1) -------------------------
+//---------------------------------------------------
+
+// (ES-1-1) 変更頻度高め
+#define VERSION "Meridian_core_for_ESP32_2022.04.23"//バージョン表示
+#define AP_SSID "xxxxxx" //アクセスポイントのAP_SSID
+#define AP_PASS "xxxxxx" //アクセスポイントのパスワード
+#define SEND_IP "192.168.xx.xx" //送り先のPCのIPアドレス（PCのIPアドレスを調べておく）
+
+//IPを固定する場合は下記の4項目を設定し、(ES-4-1) WiFi.configを有効にする
+IPAddress ip(192,168,xxx,xxx);//ESP32のIPアドレスを固定する場合のアドレス
+IPAddress subnet(255,255,255,0);//ESP32のIPアドレス固定する場合のサブネット
+IPAddress gateway(192,xxx,xxx,xxx);//ルーターのゲートウェイを入れる
+IPAddress DNS(192,168,xxx,xxx);//DNSサーバーの設定（使用せず）
+
+// (ES-1-2) シリアルモニタリング切り替え
+//-特になし-
+
+// (ES-1-3) マウント有無とピンアサイン
+//-特になし-
+
+// (ES-1-4) 各種初期設定
+#define JOYPAD_MOUNT 0 //ジョイパッドの搭載 0:なし、1:Wii_yoko, 2:Wii+Nun, 3:PS3, 4:PS4, 5:WiiPRO, 6:Xbox
+//#define JOYPAD_POLLING 10 ////ジョイパッドの問い合わせフレーム間隔(ms)
+#define MSG_SIZE 90 //Meridim配列の長さ設定（デフォルトは90）
+#define SERIAL_PC 2000000 //ESP-PC間のシリアル速度（モニタリング表示用）
+
+// (ES-1-5) その他固定値
+#define SEND_PORT 22222 //送り先のポート番号
+#define RESV_PORT 22224 //このESP32のポート番号
+#define REMOVE_BONDED_DEVICES 0 //0でバインドデバイス情報表示、1でバインドデバイス情報クリア(BTリモコンがペアリング接続できない時に使用)
+#define PAIR_MAX_DEVICES 20 //接続デバイスの記憶可能数
+
+
+//---------------------------------------------------
+// [LIBRARY] ライブラリ関連 (ES-2-LIB) ----------------
+//---------------------------------------------------
+
+// (ES-2-1) ライブラリ全般
 #include <WiFi.h>//UDPの設定
 #include <WiFiUdp.h>//UDPの設定
+WiFiUDP udp;//wifi設定
 #include <ESP32DMASPISlave.h>
-#include <FastCRC.h>
 ESP32DMASPI::Slave slave;
 #include <PS4Controller.h>//PS4コントローラー
-#include <ESP32Wiimote.h>
+#include <ESP32Wiimote.h>//Wiiコントローラー
 ESP32Wiimote wiimote;
+//#include <FastCRC.h>
 
-//PS4用を新規接続するためのペアリング情報解除設定
+// (ES-2-2) PS4用を新規接続するためのペアリング情報解除設定
 #include "esp_bt_main.h"
 #include "esp_bt_device.h"
 #include "esp_gap_bt_api.h"
 #include "esp_err.h"
-#define REMOVE_BONDED_DEVICES 1 // 0でバインドデバイス情報表示、1でバインドデバイス情報クリア(BTリモコンがペアリング接続できない時に使用)
-#define PAIR_MAX_DEVICES 20
 uint8_t pairedDeviceBtAddr[PAIR_MAX_DEVICES][6];
 char bda_str[18];
 
-//[E-3] 各種設定 ３#DEFINE ---------------------------------
-#define MSG_SIZE 90 //Meridim配列の長さ設定（デフォルトは90）
-#define AP_SSID "xxxxxx" //アクセスポイントのAP_SSID
-#define AP_PASS "xxxxxx" //アクセスポイントのパスワード
-#define SEND_IP "192.168.1.xx" //送り先のPCのIPアドレス（PCのIPアドレスを調べておく）
-#define SEND_PORT 22222 //送り先のポート番号
-#define RESV_PORT 22224 //このESP32のポート番号
-#define JOYPAD_MOUNT 0 ////ジョイパッドの搭載 0:なし、1:Wii_yoko, 2:Wii+Nun, 3:PS3, 4:PS4, 5:WiiPRO, 6:Xbox
-//#define JOYPAD_POLLING 10 ////ジョイパッドの問い合わせフレーム間隔(ms)
 
-//変数一般
+//---------------------------------------------------
+// [VARIABLE] 変数関連 (ES-3-VAL) --------------------
+//---------------------------------------------------
+
+// (ES-3-1) 変数一般
 static const int MSG_BUFF = MSG_SIZE * 2;
 int checksum; //チェックサム計算用
 long frame_count = 0;
@@ -43,19 +82,17 @@ long error_count_udp = 0;//UDP受信エラーカウント用
 long error_count_spi = 0;//SPI受信エラーカウント用
 uint8_t* s_spi_meridim_dma;//DMA用
 uint8_t* r_spi_meridim_dma;//DMA用
+TaskHandle_t thp[4];//マルチスレッドのタスクハンドル格納用
 
-//フラグ関連
-bool udp_resv_flag = 1;//UDPスレッドでの受信反応フラグ
+// (ES-3-2) フラグ関連
+bool udp_resv_flag = 0;//UDPスレッドでの受信完了フラグ
+bool udp_resv_process_queue_flag = 0;//UDP受信済みデータの処理待ちフラグ
 bool udp_send_flag = 0;//UDP送信完了フラグ
 bool spi_resv_flag = 0;//SPI受信完了フラグ
+bool udp_resv_busy = 0;//UDPスレッドでの受信中フラグ（送信抑制）
+bool udp_send_busy = 0;//UDPスレッドでの送信中フラグ（受信抑制）
 
-//マルチスレッドのタスクハンドル格納用
-TaskHandle_t thp[4];
-
-//wifi設定
-WiFiUDP udp;
-
-//共用体の設定。共用体はたとえばデータをショートで格納し、バイト型として取り出せる
+// (ES-3-3) 共用体の設定. 共用体はたとえばデータをショートで格納し,バイト型として取り出せる
 typedef union
 {
   short sval[MSG_SIZE + 2];
@@ -65,9 +102,8 @@ UnionData s_spi_meridim; //SPI受信用共用体
 UnionData r_spi_meridim; //SPI受信用共用体
 UnionData s_udp_meridim; //UDP送信用共用体
 UnionData r_udp_meridim; //UDP受信用共用体
-//UnionData r_dummy_meridim; //UDP受信用共用体 テスト用ダミー
 
-//コントローラー用変数
+// (ES-3-4) コントローラー用変数
 unsigned short pad_btn = 0;
 short pad_stick_R = 0;
 short pad_stick_R_x = 0;
@@ -82,40 +118,48 @@ long pad_btn_disp = 65536;//ディスプレイ表示用（バイナリ表示の�
 
 void setup()
 {
-  Serial.begin(2000000);
-  delay(130);//シリアルの開始を待ち安定化させるためのディレイ（ほどよい）
-  Serial.println("Serial Start...");
+  //-------------------------------------------------------------------------
+  //---- (ES-4) 起動時設定 --------------------------------------------------
+  //-------------------------------------------------------------------------
 
-  //WiFi 初期化
+  // (ES-4-1) WiFi 初期化
   WiFi.disconnect(true, true);//WiFi接続をリセット
-  Serial.println("Connecting to WiFi to : " + String(AP_SSID));//接続先を表示
-  delay(100);
-  WiFi.begin(AP_SSID, AP_PASS);//Wifiに接続
+  WiFi.config(ip, gateway, subnet, DNS);//※IPを固定にしない場合はコメントアウトする
+  WiFi.begin(AP_SSID, AP_PASS);//WiFiに接続
   while ( WiFi.status() != WL_CONNECTED) {//https://www.arduino.cc/en/Reference/WiFiStatus 返り値一覧
     delay(50);//接続が完了するまでループで待つ
   }
+  
+  // (ES-4-2) シリアル設定
+  Serial.begin(SERIAL_PC);
+  delay(130);//シリアルの開始を待ち安定化させるためのディレイ（ほどよい）
+  Serial.println("Serial Start...");
+  
+  // (ES-4-3) シリアル表示
+  Serial.println(VERSION); //バージョン表示
+  Serial.println("Connecting to WiFi to : " + String(AP_SSID));//接続先を表示
   Serial.println("WiFi connected.");//WiFi接続完了通知
-  Serial.print("ESP32's IP address is  => ");
-  Serial.println(WiFi.localIP());//ESP32自身のIPアドレスの表示
-
-  //ESP32自身のBluetoothMacアドレスを表示
+  Serial.print("ESP32's IP address is  => ");//ESP32自身のIPアドレスの表示
+  Serial.println(WiFi.localIP());
+  Serial.print("Set PC's IP address    => ");//接続先PCのIPアドレスの表示
+  Serial.println(SEND_IP);
   initBluetooth();
-  Serial.print("ESP32's Bluetooth Mac Address is => ");
+  Serial.print("ESP32's Bluetooth Mac Address is => ");//ESP32自身のBluetoothMacアドレスを表示
   Serial.println(bda2str(esp_bt_dev_get_address(), bda_str, 18));
 
-  // BTペアリング情報
-  int count = esp_bt_gap_get_bond_device_num();
-  if (!count) {
+  // (ES-4-4) BTペアリング情報
+  int bt_count = esp_bt_gap_get_bond_device_num();
+  if (!bt_count) {
     Serial.println("No bonded BT device found.");
   } else {
-    Serial.print("Bonded BT device count: "); Serial.println(count);
-    if (PAIR_MAX_DEVICES < count) {
-      count = PAIR_MAX_DEVICES;
-      Serial.print("Reset bonded device count: "); Serial.println(count);
+    Serial.print("Bonded BT device count: "); Serial.println(bt_count);
+    if (PAIR_MAX_DEVICES < bt_count) {
+      bt_count = PAIR_MAX_DEVICES;
+      Serial.print("Reset bonded device count: "); Serial.println(bt_count);
     }
-    esp_err_t tError =  esp_bt_gap_get_bond_device_list(&count, pairedDeviceBtAddr);
+    esp_err_t tError =  esp_bt_gap_get_bond_device_list(&bt_count, pairedDeviceBtAddr);
     if (ESP_OK == tError) {
-      for (int i = 0; i < count; i++) {
+      for (int i = 0; i < bt_count; i++) {
         Serial.print("Found bonded BT device # "); Serial.print(i); Serial.print(" -> ");
         Serial.println(bda2str(pairedDeviceBtAddr[i], bda_str, 18));
         if (REMOVE_BONDED_DEVICES) {
@@ -131,34 +175,34 @@ void setup()
     }
   }
 
-  //コントローラの接続開始
-  //PS4コントローラの接続開始
+  // (ES-4-5) コントローラの接続開始
+  // (ES-4-5-1) PS4コントローラの接続開始
   if (JOYPAD_MOUNT == 4) {
     PS4.begin("e8:68:e7:30:b4:52");//ESP32のMACが入ります.PS4にも設定します。
     Serial.println("PS4 controller connecting...");
   }
-  //Wiiコントローラの接続開始
+
+  // (ES-4-5-2) Wiiコントローラの接続開始
   if ((JOYPAD_MOUNT == 1) or (JOYPAD_MOUNT == 2)) {
     wiimote.init();
     wiimote.addFilter(ACTION_IGNORE, FILTER_NUNCHUK_ACCEL);
     Serial.println("Wiimote connecting...");
   }
-  //delay(1000);
 
-  //UDP通信の開始
+  // (ES-4-6) UDP通信の開始
   udp.begin(RESV_PORT);
   delay(500);
 
-  // DMAバッファを使う設定　これを使うと一度に送受信できるデータ量を増やせる
-  s_spi_meridim_dma = slave.allocDMABuffer(MSG_BUFF + 4); //DMAバッファ設定  ※+4は不具合対策
+  // (ES-4-7) DMAバッファを使う設定　これを使うと一度に送受信できるデータ量を増やせる
+  s_spi_meridim_dma = slave.allocDMABuffer(MSG_BUFF + 4); //DMAバッファ設定
   r_spi_meridim_dma = slave.allocDMABuffer(MSG_BUFF + 4); //DMAバッファ設定
   //※バッファサイズは4で割り切れる必要があり、なおかつ末尾に4バイト分0が入る不具合があるのでその対策
 
-  // 送受信バッファをリセット
+  // (ES-4-8) 送受信バッファをリセット
   memset(s_spi_meridim_dma, 0, MSG_BUFF + 4);// ※+4は不具合対策
   memset(r_spi_meridim_dma, 0, MSG_BUFF + 4);
 
-  //初回の送信データを作成してセット
+  // (ES-4-9) 初回の送信データを作成してセット
   checksum = 0;
   for (int i = 0; i < MSG_SIZE - 1; i++) //配列の末尾以外にデータを入れる
   {
@@ -171,13 +215,15 @@ void setup()
     s_spi_meridim_dma[i] = s_spi_meridim.bval[i] ;
   }
 
-  //ここでスレッドを立てる宣言（無線系はすべてCORE0で動くらしい メインループはCORE1）
-  xTaskCreatePinnedToCore(Core0_UDP_s, "Core0_UDP_s", 4096, NULL, 7, &thp[0], 0);
-  xTaskCreatePinnedToCore(Core0_BT_r, "Core0_BT_r", 8192, NULL, 5, &thp[1], 0);
+  // (ES-4-10) マルチスレッドの宣言（無線系はすべてCORE0で動くとのこと.メインループはCORE1）
+  xTaskCreatePinnedToCore(Core0_UDP_s, "Core0_UDP_s", 4096, NULL, 10, &thp[0], 0);
+  xTaskCreatePinnedToCore(Core0_UDP_r, "Core0_UDP_r", 4096, NULL, 20, &thp[1], 0);
+  xTaskCreatePinnedToCore(Core0_BT_r, "Core0_BT_r", 4096, NULL, 5, &thp[2], 0);
 
+  // (ES-4-11) SPI通信の設定
   slave.setDataMode(SPI_MODE3);
   slave.setMaxTransferSize(MSG_BUFF + 4);
-  slave.setDMAChannel(2); // 専用メモリの割り当て（1か2のみ)
+  slave.setDMAChannel(2); // 専用メモリの割り当て(1か2のみ)
   slave.setQueueSize(1); // キューサイズ　とりあえず1
   slave.begin(); // 引数を指定しなければデフォルトのSPI（SPI2,HSPIを利用）ピン番号は CS: 15, CLK: 14, MOSI: 13, MISO: 12
 }
@@ -218,32 +264,6 @@ char *bda2str(const uint8_t* bda, char *str, size_t size)
   return str;
 }
 
-
-// ■ 受信用の関数 パケットが来ていれば、MSG_BUFF 分だけr_udp_meridim.bval配列に保存 -----
-void receiveUDP() {
-  int packetSize = udp.parsePacket();
-  byte tmpbuf[MSG_BUFF];
-
-  //データの受信
-  if (packetSize == MSG_BUFF) {
-    udp.read(tmpbuf, MSG_BUFF);
-    for (int i = 0; i < MSG_BUFF; i++)
-    {
-      r_udp_meridim.bval[i] = tmpbuf[i];
-    }
-    udp_resv_flag = 1;
-  }
-}
-
-// ■ 送信用の関数 ----------------------------------------------------------
-void sendUDP() {
-  udp.beginPacket(SEND_IP, SEND_PORT);//UDPパケットの開始
-  for (int i = 0; i < MSG_BUFF; i++) {
-    udp.write(s_udp_meridim.bval[i]);//１バイトずつ送信
-  }
-  udp.endPacket();//UDPパケットの終了
-}
-
 // ■ チェックサムの算出関数 ----------------------------------------------------------
 short checksum_val(short arr[], int len) {
   int cksm = 0;
@@ -266,17 +286,84 @@ bool checksum_rslt(short arr[], int len) {
   return false;
 }
 
+
+//-------------------------------------------------------------------------
+//---- U D P 受 信 用 ス レ ッ ド -------------------------------------------
+//-------------------------------------------------------------------------
+void Core0_UDP_r(void *args) {//サブCPU(Core0)で実行するプログラム
+  delay(1000);
+  while (1) {
+    while (udp_send_busy == false) {
+      receiveUDP();//常にUDPの受信を待ち受けし、受信が完了したらフラグを挙げる
+      delay(1);//1/1000秒待つ
+    }
+    delay(1);//1/1000秒待つ
+  }
+}
+
+// ■ 受信用の関数 パケットが来ていれば、MSG_BUFF 分だけr_udp_meridim.bval配列に保存 -----
+void receiveUDP() {
+  //Serial.println("receiveUDP()");
+  int packetSize = udp.parsePacket();//受信済みのパケットサイズを取得
+  byte tmpbuf[MSG_BUFF];
+
+  //データの受信
+  if (packetSize >= MSG_BUFF) {//受信済みのパケットサイズを確認し、配列分受信できていたら読み出し
+    udp_resv_busy = 1;
+    udp.read(tmpbuf, MSG_BUFF);
+    for (int i = 0; i < MSG_BUFF; i++)
+    {
+      r_udp_meridim.bval[i] = tmpbuf[i];
+    }
+    //delayMicroseconds(10);
+    udp_resv_busy = false;
+    udp_resv_flag = true;//r_udp_meridimに受信完了した旨のフラグを挙げる
+  }
+}
+
+
 //-------------------------------------------------------------------------
 //---- U D P 送 信 用 ス レ ッ ド -------------------------------------------
 //-------------------------------------------------------------------------
 void Core0_UDP_s(void *args) {//サブCPU(Core0)で実行するプログラム
   delay(1000);
   while (1) {
-    if (udp_send_flag == 1) {
+    if (udp_send_flag) {//メインループにより送信フラグが挙がったら送信実行
+      udp_send_busy = true;//送信busyフラグを挙げる.
       sendUDP();
-      udp_send_flag = 0;
+      delayMicroseconds(10);
+      udp_send_busy = false;//送信busyフラグを下げる.
+      udp_send_flag = false;
     }
-    delay(2);//1/1000秒待つ
+    delay(1);//1/1000秒待つ
+  }
+}
+
+// ■ 送信用の関数 ----------------------------------------------------------
+void sendUDP() {
+  udp.beginPacket(SEND_IP, SEND_PORT);//UDPパケットの開始
+  for (int i = 0; i < MSG_BUFF; i++) {
+    udp.write(s_udp_meridim.bval[i]);//１バイトずつ送信
+  }
+  udp.endPacket();//UDPパケットの終了
+}
+
+
+//-------------------------------------------------------------------------
+//---- Bluetooth 用 ス レ ッ ド --------------------------------------------
+//-------------------------------------------------------------------------
+
+void Core0_BT_r(void *args) {//サブCPU(Core0)で実行するプログラム
+  while (1) {//ここで無限ループを作っておく
+    //コントローラの受信ループ
+    if (JOYPAD_MOUNT == 4) {
+      PS4pad_receive();
+    }
+    //Wiiコントローラの受信ループ
+    if ((JOYPAD_MOUNT == 1) or (JOYPAD_MOUNT == 2)) {
+      Wiipad_receive_h();
+    }
+    delay(1);//JOYPAD_POLLING ms秒待つ
   }
 }
 
@@ -286,6 +373,7 @@ void PS4pad_receive() {
   // Below has all accessible outputs from the controller
   if (PS4.isConnected()) {
     pad_btn = 0;
+
     if (PS4.Right())    pad_btn |= (B00000000 * 256) + B00100000;
     if (PS4.Down())     pad_btn |= (B00000000 * 256) + B01000000;
     if (PS4.Up())       pad_btn |= (B00000000 * 256) + B00010000;
@@ -368,35 +456,18 @@ void Wiipad_receive_h() {
       NunchukState nunchuk = wiimote.getNunchukState();
       int calib_l1x = 5;//LスティックX軸のセンターのキャリブレーション値
       int calib_l1y = -6;//LスティックY軸のセンターのキャリブレーション値
-      pad_stick_L = ((nunchuk.xStick+calib_l1x-127) * 256 + (nunchuk.yStick-127+calib_l1y));
+      pad_stick_L = ((nunchuk.xStick + calib_l1x - 127) * 256 + (nunchuk.yStick - 127 + calib_l1y));
       if (nunchuk.cBtn == 1) pad_btn |= (B00000100 * 256) + B00000000;
       if (nunchuk.zBtn == 1) pad_btn |= (0x00000001 * 256) + B00000000;
     }
-    Serial.print(127-nunchuk.xStick);
+    Serial.print(127 - nunchuk.xStick);
     Serial.print(",");
-    Serial.println(nunchuk.yStick-127);
+    Serial.println(nunchuk.yStick - 127);
 
-    delay(2);//ここの数値でCPU負荷を軽減できるかも
+    delay(1);//ここの数値でCPU負荷を軽減できるかも
   }
 }
 
-//-------------------------------------------------------------------------
-//---- Bluetooth 用 ス レ ッ ド --------------------------------------------
-//-------------------------------------------------------------------------
-
-void Core0_BT_r(void *args) {//サブCPU(Core0)で実行するプログラム
-  while (1) {//ここで無限ループを作っておく
-    //コントローラの受信ループ
-    if (JOYPAD_MOUNT == 4) {
-      PS4pad_receive();
-    }
-    //Wiiコントローラの受信ループ
-    if ((JOYPAD_MOUNT == 1) or (JOYPAD_MOUNT == 2)) {
-      Wiipad_receive_h();
-    }
-    delay(1);//JOYPAD_POLLING ms秒待つ
-  }
-}
 
 //-------------------------------------------------------------------------
 //---- メ　イ　ン　ル　ー　プ ------------------------------------------------
@@ -404,88 +475,86 @@ void Core0_BT_r(void *args) {//サブCPU(Core0)で実行するプログラム
 
 void loop()
 {
-  //---- < 1 > U D P 受 信 --------------------------------------------------
-  //[1-1] UDP受信の実行 もしデータパケットが来ていれば受信する
-  receiveUDP();
-  // ● UDP受信データ「r_udp_meridim」に中身が入った状態
+  //----  [ 1 ]  U D P 受 信  --------------------------------------------------
 
-  //[1-2] UDP受信配列からSPI送信配列にデータを転写
-  if (udp_resv_flag == 1) {
+  //[1-1] UDP受信の実行
+  //  --->> [check!] UDP受信は別スレッド void Core0_UDP_r() で実行されている.
 
-    // ● UDP受信データ「r_udp_meridim」のチェックサムを確認
+  //[1-2] UDP受信配列からSPI送信配列にデータを転写.
+  if (udp_resv_flag) {//UDP受信完了フラグをチェック.(UDP受信データ r_udp_meridim の更新が完了している状態か?)
+    udp_resv_flag = false;//UDP受信完了フラグを下げる.
+
+    // [1-2-1] UDP受信データ r_udp_meridim のチェックサムを確認.
     if (checksum_rslt(r_udp_meridim.sval, MSG_SIZE))
     {
-      // ● 受信成功ならUDP受信データをSPI送信データに上書き更新する
+      // [1-2-1-a] 受信成功ならUDP受信データをSPI送信データに上書き更新する.
       memcpy(s_spi_meridim.bval, r_udp_meridim.bval, MSG_BUFF + 4);
-      //ここでこのパートのエラーフラグも消す
-      s_spi_meridim.bval[177] &= 0b10111111;//meridimの[88]番の14ビット目(ESPのUPD受信成否)のフラグを下げる
-      //Serial.println("UDPrvOK");
+      delayMicroseconds(1);
+      // このパートのエラーフラグを下げる
+      s_spi_meridim.bval[177] &= 0B10111111;//meridimの[88]番の14ビット目(ESPのUPD受信成否)のフラグを下げる.
+
     } else {
-      // ● 受信失敗ならUDP受信データをSPI送信データに上書き更新せず、前回のSPI送信データにエラーフラグだけ上乗せする
-      s_spi_meridim.bval[177] |= 0b01000000;//meridimの[88]番の14ビット目(ESPのUPD受信成否)のフラグを上げる
-      error_count_udp ++;
-      Serial.print("U:"); Serial.println(error_count_udp);//    Serial.print("/");    Serial.println(frame_count);
+      // [1-2-1-b] 受信失敗ならUDP受信データをSPI送信データに上書き更新せず, 前回のSPI送信データにエラーフラグだけ上乗せする.
+      s_spi_meridim.bval[177] |= 0B01000000;//meridimの[88]番の14ビット目(ESPのUPD受信成否)のフラグを上げる.
+      error_count_udp ++;//エラーカウンタをアップ.
     }
-    udp_resv_flag = 0;
   }
+  //  --->> [check!] ここで s_spi_meridim にはチェックサム済みの r_udp_meridim が転記され, ESP32UDP受信エラーフラグも入った状態.
 
-  // ●「s_spi_meridim」にはチェックサム済みの「r_udp_meridim」が転記され、ESP32UDP受信エラーフラグも入った状態
 
-  //---- < 2 > S P I 送 信 信 号 作 成  -----------------------------------------------
+  //----  [ 2 ]  S P I 送 信 信 号 作 成  -----------------------------------------------
 
   //[2-1] ユーザー定義の送信データの書き込み
-  // Teensyへ送るデータをこのパートで作成、書き込み
+  //Teensyへ送るデータをこのパートで作成, 書き込み.
+  //  --->> [check!] 現在はここでとくに何もしない.
 
   //[2-2] リモコンデータの書き込み
   s_spi_meridim.sval[80] = pad_btn;
-  //if (s_spi_meridim.sval[80] != 0) {//ボタンのモニタリング用
-  //  Serial.println(s_spi_meridim.sval[80], BIN);
-  //}
   s_spi_meridim.sval[81] = pad_stick_L;
   s_spi_meridim.sval[82] = pad_stick_R;
   s_spi_meridim.sval[83] = pad_stick_V;
-
-  // ● SPI送信データ「s_spi_meridim」はESP32で受けたリモコンデータが上書きされた状態
+  //  --->> [check!] ここでSPI送信データ s_spi_meridim はESP32で受けたリモコンデータが上書きされた状態.
 
   //[2-3] チェックサムの追記
-  // ● SPI送信データ「s_spi_meridim」にチェックサムを追記
   s_spi_meridim.sval[MSG_SIZE - 1] = checksum_val(s_spi_meridim.sval, MSG_SIZE);
+  //  --->> [check!] ここでSPI送信データ s_spi_meridim はチェックサムが入り完成している状態.
 
-  // ● SPI送信データ「s_spi_meridim」はチェックサムも入り完成している
 
-  //---- < 3 > S P I 送 受 信 -----------------------------------------------
+  //----  [ 3 ]  S P I 送 受 信  -----------------------------------------------
   while (slave.available())//完了した（受信した）トランザクション結果のサイズ
   {
 
     // ↓↓↓↓ SPI送受信用のデータはここで処理しなくてはならない ↓↓↓↓
-
     //[3-1] 完成したSPI送信データをDMAに転記
     memcpy(s_spi_meridim_dma, s_spi_meridim.bval, MSG_BUFF + 4);
-
+    delayMicroseconds(1);
+    //Serial.println("[3] copied to SPI_dma");
     // ↑↑↑↑ SPI送受信用のデータはここまでで処理しなくてはならない ↑↑↑↑
 
     slave.pop();//DMAのデータ配列の先頭を削除
+
   }
 
   //[3-2] SPI送受信の実行
-  //SPIの送受信:キューが送信済みであればセットされた送信データを送信する。
-  if (slave.remained() == 0) {//キューに入れられた（完了していない）トランザクションのサイズが0なら実行
+  //SPIの送受信:キューが送信済みであればセットされた送信データを送信する.
+  if (slave.remained() == 0) {//キューに入れられた（完了していない）トランザクションのサイズが0なら実行.
     slave.queue(r_spi_meridim_dma, s_spi_meridim_dma, MSG_BUFF + 4);
-    spi_resv_flag = 1;//SPI受信完了フラグを上げる
     frame_count = frame_count + 1;//SPIの受信をもってフレームカウントとする
-  }
 
-  //---- < 4 > U D P 送 信 信 号 作 成 ----------------------------------------
-  if (spi_resv_flag == 1) {//SPI受信完了フラグが立っていればUDP送信スレッドにフラグで知らせる
+    //----  [ 4 ]  U D P 送 信 信 号 作 成 ----------------------------------------
 
-    //[4-1] 受信したSPI送信データをUDP送信データに転記
+    //[4-1] 受信したSPI送信データをUDP送信データに転記.
     memcpy(s_udp_meridim.bval, r_spi_meridim_dma, MSG_BUFF + 4);
-    // ● UDP送信データ"s_udp_meridim"に中身が入った状態
+    delayMicroseconds(1);
+    //  --->> [check!] UDP送信データ"s_udp_meridim"に中身が入った状態.
 
-    //---- < 5 > U D P 送 信 ----------------------------------------------
-    //[5-1] UDP送信を実行（フラグを立ててスレッドに知らせる）
-    udp_send_flag = 1;//UDP送信準備完了フラグを上げる
-    spi_resv_flag = 0;//SPI受信完了フラグを下げる
+
+    //----  [ 5 ]  U D P 送 信 ----------------------------------------------
+    //[5-1] UDP送信を実行
+    while (udp_resv_busy) //UDPが受信処理中なら送信しない
+    {
+      delayMicroseconds(2);
+    }
+    udp_send_flag = true;//UDP送信準備完了フラグを挙げる.(スレッドCore0_UDP_sで送信実行)
   }
-  delayMicroseconds(1);
 }
