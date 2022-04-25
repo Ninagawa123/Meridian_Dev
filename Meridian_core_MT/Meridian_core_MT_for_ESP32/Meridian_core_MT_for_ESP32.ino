@@ -1,4 +1,4 @@
-// Meridian_core_for_ESP32_2022.04.23 By Izumi Ninagawa & Meridian Project
+// Meridian_core_for_ESP32_2022.04.24 By Izumi Ninagawa & Meridian Project
 // MIT Licenced.
 //
 // Teensy4.0 - (SPI) - ESP32DevKitC - (Wifi/UDP) - PC/python
@@ -16,16 +16,16 @@
 //---------------------------------------------------
 
 // (ES-1-1) 変更頻度高め
-#define VERSION "Meridian_core_for_ESP32_2022.04.23"//バージョン表示
+#define VERSION "Meridian_core_for_ESP32_2022.04.24"//バージョン表示
 #define AP_SSID "xxxxxx" //アクセスポイントのAP_SSID
 #define AP_PASS "xxxxxx" //アクセスポイントのパスワード
-#define SEND_IP "192.168.xx.xx" //送り先のPCのIPアドレス（PCのIPアドレスを調べておく）
+#define SEND_IP "192.168.1.xxx" //送り先のPCのIPアドレス（PCのIPアドレスを調べておく）
 
-//IPを固定する場合は下記の4項目を設定し、(ES-4-1) WiFi.configを有効にする
-IPAddress ip(192,168,xxx,xxx);//ESP32のIPアドレスを固定する場合のアドレス
-IPAddress subnet(255,255,255,0);//ESP32のIPアドレス固定する場合のサブネット
-IPAddress gateway(192,xxx,xxx,xxx);//ルーターのゲートウェイを入れる
-IPAddress DNS(192,168,xxx,xxx);//DNSサーバーの設定（使用せず）
+//IPを固定する場合は下記の4項目を設定し、(ES-4-1) WiFi.configを有効にする 固定しない場合はコメントアウト必須
+//IPAddress ip(192,168,xxx,xxx);//ESP32のIPアドレスを固定する場合のアドレス
+//IPAddress subnet(255,255,255,0);//ESP32のIPアドレス固定する場合のサブネット
+//IPAddress gateway(192,168,xxx,xxx);//ルーターのゲートウェイを入れる
+//IPAddress DNS(8,8,8,8);//DNSサーバーの設定（使用せず）
 
 // (ES-1-2) シリアルモニタリング切り替え
 //-特になし-
@@ -80,6 +80,7 @@ int checksum; //チェックサム計算用
 long frame_count = 0;
 long error_count_udp = 0;//UDP受信エラーカウント用
 long error_count_spi = 0;//SPI受信エラーカウント用
+long error_count_esp_skip = 0;//ESPのPCからの受信連番カウントエラー用
 uint8_t* s_spi_meridim_dma;//DMA用
 uint8_t* r_spi_meridim_dma;//DMA用
 TaskHandle_t thp[4];//マルチスレッドのタスクハンドル格納用
@@ -91,6 +92,9 @@ bool udp_send_flag = 0;//UDP送信完了フラグ
 bool spi_resv_flag = 0;//SPI受信完了フラグ
 bool udp_resv_busy = 0;//UDPスレッドでの受信中フラグ（送信抑制）
 bool udp_send_busy = 0;//UDPスレッドでの送信中フラグ（受信抑制）
+char frame_sync_s = 0;//フレーム毎に0-199をカウントし、送信用Meridm[88]の下位8ビットに格納
+char frame_sync_r_expect = 0;//フレーム毎に前回受信値に+１として受信値と比較（0-199)
+char frame_sync_r_resv = 0;//今フレームに受信したframe_sync_rを格納
 
 // (ES-3-3) 共用体の設定. 共用体はたとえばデータをショートで格納し,バイト型として取り出せる
 typedef union
@@ -124,17 +128,17 @@ void setup()
 
   // (ES-4-1) WiFi 初期化
   WiFi.disconnect(true, true);//WiFi接続をリセット
-  WiFi.config(ip, gateway, subnet, DNS);//※IPを固定にしない場合はコメントアウトする
+  //WiFi.config(ip, gateway, subnet, DNS);//※IPを固定にする場合はコメントアウトをはずして有効にする(ES-1-1)も変更すること
   WiFi.begin(AP_SSID, AP_PASS);//WiFiに接続
   while ( WiFi.status() != WL_CONNECTED) {//https://www.arduino.cc/en/Reference/WiFiStatus 返り値一覧
     delay(50);//接続が完了するまでループで待つ
   }
-  
+
   // (ES-4-2) シリアル設定
   Serial.begin(SERIAL_PC);
   delay(130);//シリアルの開始を待ち安定化させるためのディレイ（ほどよい）
   Serial.println("Serial Start...");
-  
+
   // (ES-4-3) シリアル表示
   Serial.println(VERSION); //バージョン表示
   Serial.println("Connecting to WiFi to : " + String(AP_SSID));//接続先を表示
@@ -487,11 +491,43 @@ void loop()
     // [1-2-1] UDP受信データ r_udp_meridim のチェックサムを確認.
     if (checksum_rslt(r_udp_meridim.sval, MSG_SIZE))
     {
-      // [1-2-1-a] 受信成功ならUDP受信データをSPI送信データに上書き更新する.
+      // [1-2-1-a-1] 受信成功ならUDP受信データをSPI送信データに上書き更新する.
       memcpy(s_spi_meridim.bval, r_udp_meridim.bval, MSG_BUFF + 4);
       delayMicroseconds(1);
+
       // このパートのエラーフラグを下げる
       s_spi_meridim.bval[177] &= 0B10111111;//meridimの[88]番の14ビット目(ESPのUPD受信成否)のフラグを下げる.
+
+      // [1-2-1-a-2] 通信エラー処理(スキップ検出)
+      frame_sync_r_resv = s_spi_meridim.bval[176];//数値を受け取る
+
+      //予測値のカウントアップ
+      frame_sync_r_expect ++;
+      if (frame_sync_r_expect > 199) {
+        frame_sync_r_expect = 0;
+      }
+
+      //カウント受信の比較
+      //Serial.print(int(frame_sync_r_expect));
+      //Serial.print(":");
+      //Serial.println(int(frame_sync_r_resv));
+
+      if (frame_sync_r_resv == frame_sync_r_expect)//予想通りなら取りこぼしなし
+      {
+        s_spi_meridim.bval[177] &= B11111011;//エラーフラグ10番(ESPのPCからのUDP取りこぼし検出)をオフ
+      } else
+      {
+        frame_sync_r_expect = frame_sync_r_resv;//受信値を正解の予測値だったとする
+        s_spi_meridim.bval[177] |= B00000100; //エラーフラグ10番(ESPのPCからのUDP取りこぼし検出)をオン
+        error_count_esp_skip ++;
+      }
+
+      //UDPのスキップ回数を表示
+      //Serial.print("  count ");
+      //Serial.println(int(error_count_esp_skip));
+
+      //受信カウントをそのまま送信カウントとすることで、PCデータがシーケンシャルにTsyに届いてるかのチェックとする
+      frame_sync_s = frame_sync_r_resv;
 
     } else {
       // [1-2-1-b] 受信失敗ならUDP受信データをSPI送信データに上書き更新せず, 前回のSPI送信データにエラーフラグだけ上乗せする.
@@ -515,7 +551,10 @@ void loop()
   s_spi_meridim.sval[83] = pad_stick_V;
   //  --->> [check!] ここでSPI送信データ s_spi_meridim はESP32で受けたリモコンデータが上書きされた状態.
 
-  //[2-3] チェックサムの追記
+  //[2-3] フレームスキップ検出用のカウントを転記して格納（PCからのカウントと同じ値をESPに転送）
+  s_spi_meridim.bval[176] = short(frame_sync_s);
+
+  //[2-4] チェックサムの追記
   s_spi_meridim.sval[MSG_SIZE - 1] = checksum_val(s_spi_meridim.sval, MSG_SIZE);
   //  --->> [check!] ここでSPI送信データ s_spi_meridim はチェックサムが入り完成している状態.
 
