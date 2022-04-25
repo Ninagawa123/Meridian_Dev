@@ -1,9 +1,9 @@
 
-// Meridian_core_for_Teensy_2022.04.23 By Izumi Ninagawa & Meridian Project
+// Meridian_core_for_Teensy_2022.04.24 By Izumi Ninagawa & Meridian Project
 // MIT Licenced.
 
 //This code is for Teensy 4.0
-//PC計測200Hz以上での安定動作を確認→嘘でした。いいとこ100Hz,50ならかなり安定。
+//2022.04.24 フレーム連番チェックの方式を変更 100Hzと200Hzの結果さほど変わらず50Hzならなお安定
 //
 //MeridianControlPanelDPG対応
 //全体的にコードを整理
@@ -13,17 +13,17 @@
 //---------------------------------------------------
 
 // (TS-1-1) 変更頻度高め
-#define VERSION "Meridian_core_MT_for_Teensy_2022.04.23"//バージョン表示
+#define VERSION "Meridian_core_MT_for_Teensy_2022.04.24"//バージョン表示
 #define FRAME_DURATION 10//1フレームあたりの単位時間（単位ms）
 
 // (TS-1-2) シリアルモニタリング切り替え
 #define MONITOR_SRC 0 //Teensyでのシリアル表示:送信ソースデータ
 #define MONITOR_SEND 0 //Teensyでのシリアル表示:送信データ
 #define MONITOR_RESV 0 //Teensyでのシリアル表示:受信データ
-#define MONITOR_RESV_SHORT 1 //Teensyでのシリアル表示:受信データ(short)
+#define MONITOR_RESV_SHORT 0 //Teensyでのシリアル表示:受信データ(short)
 #define MONITOR_RESV_CHECK 0 //Teensyでのシリアル表示:受信成功の可否
 #define MONITOR_RESV_ERROR 0 //Teensyでのシリアル表示:受信エラー率
-#define MONITOR_ALL_ERROR 0 //Teensyでのシリアル表示:全経路の受信エラー率
+#define MONITOR_ALL_ERROR 1 //Teensyでのシリアル表示:全経路の受信エラー率
 #define MONITOR_RPY 0 //Teensyでのシリアル表示:IMUからのrpy換算値
 #define MONITOR_JOYPAD 0 //Teensyでのシリアル表示:リモコンのデータ
 
@@ -215,8 +215,9 @@ int err_esp_pc = 0;//PCの受信エラー（ESP32からのUDP）
 int err_pc_esp = 0;//ESP32の受信エラー（PCからのUDP）
 int err_esp_tsy = 0;//Teensyの受信エラー（ESP32からのSPI）
 int err_tsy_esp = 0;//ESP32の受信エラー（TeensyからのSPI）
-int err_tsy_skip = 0;//Teensyの受信エラー（受信データスキップ）
-int err_pc_skip = 0; //PCの受信エラー（受信データスキップ）
+int err_esp_skip = 0;//UDP→ESP受信のカウントの連番スキップ回数
+int err_tsy_skip = 0;//ESP→Teensy受信のカウントの連番スキップ回数
+int err_pc_skip = 0; //PC受信のカウントの連番スキップ回数
 
 // (TS-6-6) 各種モード設定
 bool trim_adjust = TRIM_ADJUST_MODE; //トリムモードのオンオフ、起動時に下記の設定値で静止させたい時は1
@@ -859,13 +860,14 @@ void loop() {
   frame_count = frame_count + frame_count_diff;//サインカーブ動作用のフレームカウントをいくつずつ進めるかをここで設定。
 
 
-  //----  [ 9 ] E S P 3 2 と の I S P に よ る 送 受 信 処 理 -------------------------------
+  //----  [ 9 ] E S P 3 2 と の S P I に よ る 送 受 信 処 理 -------------------------------
 
   // [9-1] ESP32とのSPI送受信の実行
   if (ESP32_MOUNT) {
     TsyDMASPI0.transfer(s_spi_meridim_dma.bval, r_spi_meridim_dma.bval, MSG_BUFF);
 
     spi_trial ++;//SPI送受信回数のカウント
+
 
     // [9-2] ESP32からのSPI受信データチェックサム確認と成否のシリアル表示
     //チェックサムがOKならバッファから受信配列に転記
@@ -888,25 +890,32 @@ void loop() {
     }
 
     // [9-3] 通信エラー処理(スキップ検出)
-    //frame_sync_rの確認(受信フレームにスキップが生じていないかをMeridim[88]の下位8ビットのカウンターで判断)
-    frame_sync_r_resv = r_spi_meridim.bval[176];//数値を受け取る
-
     frame_sync_r_expect ++;//フレームカウント予想値を加算
     if (frame_sync_r_expect > 199) { //予想値が200以上ならカウントを0に戻す
       frame_sync_r_expect = 0;
     }
 
+    //Serial.print(int(frame_sync_r_resv));
+    //Serial.print(":");
+    //Serial.println(int(frame_sync_r_expect));
+
+    //frame_sync_rの確認(受信フレームにスキップが生じていないかをMeridim[88]の下位8ビットのカウンターで判断)
+    frame_sync_r_resv = r_spi_meridim.bval[176];//数値を受け取る
+
     if (frame_sync_r_resv == frame_sync_r_expect) //frame_sync_rの受信値が期待通りなら順番どおり受信
     {
       r_spi_meridim.bval[177] &= B11111101; //エラーフラグ9番(Teensy受信のスキップ検出)をオフ
-    } else if (frame_sync_r_resv < frame_sync_r_expect)//frame_sync_rを0に戻すタイミングの場合
+      //Serial.println("Tsy sequensial OK!");
+    } else
     {
       r_spi_meridim.bval[177] |= B00000010; //エラーフラグ9番(Teensy受信のスキップ検出)をオン
-      err_tsy_skip ++;
-    } else if (frame_sync_r_resv > frame_sync_r_expect)//frame_sync_rを0に戻すタイミングの場合
-    {
-      r_spi_meridim.bval[177] |= B00000010; //エラーフラグ9番(Teensy受信のスキップ検出)をオン
-      frame_sync_r_expect = frame_sync_r_resv;//予想値をカウントアップする
+      if (frame_sync_r_resv == frame_sync_r_expect - 1)
+      {
+        frame_sync_r_expect = frame_sync_r_resv + 1; //同じ値を２回取得した場合には実際はシーケンスが進んだものとして補正（アルゴリズム要検討）
+      } else
+      {
+        frame_sync_r_expect = frame_sync_r_resv; //取りこぼしについては現在の受信値を正解の予測値としてキープ
+      }
       err_tsy_skip ++;
     }
 
@@ -926,6 +935,14 @@ void loop() {
     if ((r_spi_meridim.bval[177] >> 4) & B00000001)//Meridim[88] bit12:ESP32のTeensyからのSPI受信エラー
     {
       err_tsy_esp ++;
+    }
+    if ((r_spi_meridim.bval[177] >> 2) & B00000001)//Meridim[88] bit10:UDP→ESP受信のカウントのスキップ
+    {
+      err_esp_skip ++;
+    }
+    if ((r_spi_meridim.bval[177] >> 1) & B00000001)//Meridim[88] bit9:ESP→Teensy受信のカウントのスキップ
+    {
+      err_tsy_skip ++;
     }
     if ((r_spi_meridim.bval[177]) & B00000001)//Meridim[88] bit8:PC受信のカウントのスキップ
     {
@@ -956,7 +973,7 @@ void loop() {
       }
     }
 
-    // [10-3] 全経路のエラー数/率の表示
+    // [10-3] 全経路のエラー数の表示
     if (monitor_all_error) {
       Serial.print("[ERRORs] esp->pc:");
       Serial.print(err_esp_pc);
@@ -968,14 +985,12 @@ void loop() {
       Serial.print(err_esp_tsy);
       Serial.print("  tsy-skip:");
       Serial.print(err_tsy_skip);//
+      Serial.print("  esp-skip:");
+      Serial.print(err_esp_skip);//
       Serial.print("  pc-skip:");
       Serial.print(err_pc_skip);//
-      Serial.print("  clk_expect:");
-      Serial.print(frame_sync_r_expect, DEC);
-      //Serial.print("  clk_pst:");
-      //Serial.print(frame_sync_r_resv_past, DEC);
-      Serial.print("  clk_resv:");
-      Serial.print(frame_sync_r_resv, DEC);
+      Serial.print("  seq:");
+      Serial.print(int(frame_sync_r_resv));//
       Serial.print("  [ERR]:");
       Serial.print(r_spi_meridim.bval[177], BIN);
       Serial.println();
