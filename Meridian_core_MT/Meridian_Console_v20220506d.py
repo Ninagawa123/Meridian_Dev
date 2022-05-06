@@ -184,6 +184,7 @@ def meridian_loop():
             while True:
                 global loop_count
                 global r_meridim
+                global s_meridim
                 global r_meridim_char
                 global s_meridim_motion
                 global error_count_pc_to_esp
