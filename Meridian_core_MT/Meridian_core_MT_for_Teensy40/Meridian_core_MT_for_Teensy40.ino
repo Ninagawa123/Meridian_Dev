@@ -1,19 +1,20 @@
 
-// Meridian_core_for_Teensy_2022.04.24 By Izumi Ninagawa & Meridian Project
+// Meridian_core_MT_for_Teensy_2022.05.06d By Izumi Ninagawa & Meridian Project
 // MIT Licenced.
 
 //This code is for Teensy 4.0
-//2022.04.24 フレーム連番チェックの方式を変更 100Hzと200Hzの結果さほど変わらず50Hzならなお安定
+//PC計測現状100Hz~200HzでPC→Teensyのデータ取りこぼし5%程度,50Hzならそこそこ安定。
 //
 //MeridianControlPanelDPG対応
 //全体的にコードを整理
+//2022.05.01 IMUのデータ取得タイミングをタイマー割り込みタイプに変更
 
 //---------------------------------------------------
 // [SETTING] 各種設定 (TS-1) -------------------------
 //---------------------------------------------------
 
 // (TS-1-1) 変更頻度高め
-#define VERSION "Meridian_core_MT_for_Teensy_2022.04.24"//バージョン表示
+#define VERSION "Meridian_core_MT_for_Teensy_2022.05.06d"//バージョン表示
 #define FRAME_DURATION 10//1フレームあたりの単位時間（単位ms）
 
 // (TS-1-2) シリアルモニタリング切り替え
@@ -49,7 +50,6 @@
 #define EN_R_PIN 5 //ICSサーボ信号の右系のENピン番号（固定）
 #define EN_3_PIN 23 //半二重サーボ信号の3系のENピン番号（固定）
 #define SERIAL_PC 60000000 //PCとのシリアル速度（モニタリング表示用）
-#define I2C_CLOCK 400000// I2Cの速度（400kHz推奨）
 #define SPI_CLOCK 6000000// SPI通信の速度（6000000kHz推奨）
 #define BAUDRATE 1250000 //ICSサーボの通信速度1.25M
 #define TIMEOUT 2 //ICS返信待ちのタイムアウト時間。通信できてないか確認する場合には1000ぐらいに設定するとよい
@@ -169,6 +169,7 @@
 //#include <MadgwickAHRS.h> //MPU6050のライブラリ導入
 #include <MPU6050_6Axis_MotionApps20.h> //MPU6050のライブラリ導入
 #include <IcsHardSerialClass.h> //ICSサーボのライブラリ導入
+#include <MsTimer2.h> //タイマーのライブラリ導入
 
 
 //---------------------------------------------------
@@ -184,6 +185,7 @@ bool file_open = 0; //SDカード用の変数
 int k; //各サーボの計算用変数
 
 // (TS-6-2) フラグ関連
+bool flag_sensor_imu_writable = true;//メインが結果値を読み取る瞬間、サブスレッドによる書き込みをウェイト
 
 // (TS-6-3) 共用体の宣言 : Meridim配列格納用、SPI送受信バッファ配列格納用
 typedef union //共用体は共通のメモリ領域に異なる型で数値を読み書きできる
@@ -205,10 +207,8 @@ int frame_count = 0;//サイン計算用の変数
 int frame_count_diff = 2;//サインカーブ動作などのフレームカウントをいくつずつ進めるか
 int joypad_frame_count = 0;//JOYPADのデータを読みに行くためのフレームカウント
 char frame_sync_s = 0;//フレーム毎に0-199をカウントし、送信用Meridm[88]の下位8ビットに格納
-//char frame_sync_r = 0;//フレーム毎に0-199をカウントし、受信値と比較
 char frame_sync_r_expect = 0;//フレーム毎に0-199をカウントし、受信値と比較
 char frame_sync_r_resv = 0;//今フレームに受信したframe_sync_rを格納
-//char frame_sync_r_resv_past = 0;//前フレームに受信したframe_sync_rをキープ
 
 // (TS-6-5) エラーカウント用
 int err_esp_pc = 0;//PCの受信エラー（ESP32からのUDP）
@@ -241,6 +241,8 @@ short stick_Ry = 0;//受信ジョイスティックデータRy
 unsigned short pad_btn = 0;//ボタン変数一般化変換
 
 // (TS-6-8) MPU6050のアドレス、レジスタ設定値
+#define I2C_CLOCK 400000// I2Cの速度（400kHz推奨）
+#define MPU_STOCK 4//MPUで移動平均を取る際の元にする時系列データの個数
 MPU6050 mpu;
 uint8_t mpuIntStatus;   // holds actual interrupt status byte from MPU
 uint8_t devStatus;      // return status after each device operation (0 = success, !0 = error)
@@ -250,7 +252,13 @@ Quaternion q;           // [w, x, y, z]         quaternion container
 VectorFloat gravity;    // [x, y, z]            gravity vector
 float ypr[3];           // [roll, pitch, yaw]   roll/pitch/yaw container and gravity vector
 float ROLL, PITCH, YAW, YAW_ZERO;
-float mpu_data[16] ;//mpudata acc_x,y,z,gyro_x,y,z,mag_x,y,z,gr_x,y,z,rpy_r,p,y,temp
+float mpu_read[16] ;//mpuからの読み込んだ一次データacc_x,y,z,gyro_x,y,z,mag_x,y,z,gr_x,y,z,rpy_r,p,y,temp
+float mpu_zeros[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; //リセット用
+float mpu_ave_data[16] ;//上記の移動平均値を入れる
+float mpu_result[16] ;//加工後の最新のmpuデータ（二次データ）
+float mpu_stock_data[MPU_STOCK][16] ;//上記の移動平均値計算用のデータストック
+int mpu_stock_count = 0; //上記の移動平均値計算用のデータストックを輪番させる時の変数
+
 VectorInt16 aa;         // [x, y, z]            加速度センサの測定値
 VectorInt16 gyro;       // [x, y, z]            角速度センサの測定値
 VectorInt16 mag;        // [x, y, z]            磁力センサの測定値
@@ -430,11 +438,17 @@ void setup() {
   memset(idl_d, 0, 15); //配列要素を0でリセット
   memset(idr_d, 0, 15); //配列要素を0でリセット
 
-  // (TS-11-9) 変数の設定
+  // (TS-11-9) 割り込み処理系のセット
+  // IMUのデータ取得
+  MsTimer2::set(10, imu_getYawPitchRoll); // MPUの情報を取得 10msごとにチェック
+  MsTimer2::start();
+
+
+  // (TS-11-10) 変数の設定
   YAW_ZERO = 0;
   s_spi_meridim.sval[0] = MSG_SIZE ;//(マスターコマンド）
 
-  // (TS-11-10) 起動時のディレイ用mercちょい足し(サーボ起動待ち用)
+  // (TS-11-11) 起動時のディレイ用mercちょい足し(サーボ起動待ち用)
   merc = merc + 3000;
 }
 
@@ -523,55 +537,84 @@ void setupMPU() {
 }
 
 // ■ IMUのDMP推定値取得 ----------------------------------------------------------
-void getYawPitchRoll() {
+void imu_getYawPitchRoll() {
   if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) { // 最新のIMU情報を取得
     mpu.dmpGetQuaternion(&q, fifoBuffer);
     mpu.dmpGetGravity(&gravity, &q);
     mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-    ROLL = ypr[2] * 180 / M_PI;
-    PITCH = ypr[1] * 180 / M_PI;
-    YAW = (ypr[0] * 180 / M_PI) - YAW_ZERO;
 
     //加速度の値
     mpu.dmpGetAccel(&aa, fifoBuffer);
-    mpu_data[0] = (float)aa.x;
-    mpu_data[1] = (float)aa.y;
-    mpu_data[2] = (float)aa.z;
+    mpu_read[0] = (float)aa.x;
+    mpu_read[1] = (float)aa.y;
+    mpu_read[2] = (float)aa.z;
 
     //ジャイロの値
     mpu.dmpGetGyro(&gyro, fifoBuffer);
-    mpu_data[3] = (float)gyro.x;
-    mpu_data[4] = (float)gyro.y;
-    mpu_data[5] = (float)gyro.z;
+    mpu_read[3] = (float)gyro.x;
+    mpu_read[4] = (float)gyro.y;
+    mpu_read[5] = (float)gyro.z;
 
     //磁力センサの値
-    mpu_data[6] = (float)mag.x;
-    mpu_data[7] = (float)mag.y;
-    mpu_data[8] = (float)mag.z;
+    mpu_read[6] = (float)mag.x;
+    mpu_read[7] = (float)mag.y;
+    mpu_read[8] = (float)mag.z;
 
     //重力DMP推定値
-    mpu_data[9] = gravity.x;
-    mpu_data[10] = gravity.y;
-    mpu_data[11] = gravity.z;
+    mpu_read[9] = gravity.x;
+    mpu_read[10] = gravity.y;
+    mpu_read[11] = gravity.z;
 
     //相対方向DMP推定値
-    mpu_data[12] = ypr[2] * 180 / M_PI;
-    mpu_data[13] = ypr[1] * 180 / M_PI;
-    mpu_data[14] = (ypr[0] * 180 / M_PI) - YAW_ZERO;
+    mpu_read[12] = ypr[2] * 180 / M_PI;//DMP_ROLL推定値
+    mpu_read[13] = ypr[1] * 180 / M_PI;//DMP_PITCH推定値
+    mpu_read[14] = (ypr[0] * 180 / M_PI) - YAW_ZERO;//DMP_YAW推定値
 
     //温度
-    mpu_data[15] = 0;//fifoBufferからの温度取得方法が今のところ不明。
+    mpu_read[15] = 0;//fifoBufferからの温度取得方法が今のところ不明。
+
+    if (flag_sensor_imu_writable) {
+      memcpy(mpu_result, mpu_read, sizeof(float) * 16);
+    }
 
     if (monitor_rpy == 1) { //Teensyでのシリアル表示:IMUからのrpy換算値
       Serial.print("[Roll, Pitch, Yaw] ");
-      Serial.print(ROLL);
+      Serial.print(mpu_read[12]);
       Serial.print(", ");
-      Serial.print(PITCH);
+      Serial.print(mpu_read[13]);
       Serial.print(", ");
-      Serial.println(YAW);
+      Serial.println(mpu_read[14]);
     }
   }
 }
+
+void imu_moving_average() {//IMUデータの移動平均値の取得
+  //二次元配列の0番から輪番で最新のデータを入れていく。指定個数を上回ったら0番に戻す
+  mpu_stock_count ++;
+  if (mpu_stock_count > MPU_STOCK) {
+    mpu_stock_count = 0;
+  }
+
+  imu_getYawPitchRoll();//IMUから最新データを取得
+  //配列の輪番該当箇所に最新のデータを上書きする
+  memcpy(mpu_stock_data[mpu_stock_count], mpu_read, MPU_STOCK);
+  for (int i = 0; i < 16; i++) {
+    mpu_ave_data[i] = 0.0;
+  }
+
+  //値を合計していく
+  for (int i = 0; i < MPU_STOCK; i++) {
+    for (int j = 0; j < 16; j++) {
+      mpu_ave_data[j] += mpu_stock_data[i][j];
+    }
+  }
+
+  //値を割る
+  for (int i = 0; i < 16; i++) {
+    mpu_ave_data[i] = mpu_ave_data[i / MPU_STOCK];
+  }
+}
+
 
 //-------------------------------------------------------------------------
 //---- コ マ ン ド 系 の 関 数 各 種  ----------------------------------------
@@ -659,22 +702,156 @@ void joypad_read() {
 
 void loop() {
 
+  //----  [ 1 ] E S P 3 2 と の S P I に よ る 送 受 信 処 理 -------------------------------
 
-  //----  [ 1 ] 受 信 S P I デ ー タ を 送 信 S P I デ ー タ に 転 記  -----------------------
-  memcpy(s_spi_meridim.bval, r_spi_meridim.bval, MSG_BUFF + 4);
+  // [1-1] ESP32とのSPI送受信の実行
+  if (ESP32_MOUNT) {
+    TsyDMASPI0.transfer(s_spi_meridim_dma.bval, r_spi_meridim_dma.bval, MSG_BUFF + 4);
+
+    spi_trial ++;//SPI送受信回数のカウント
 
 
-  //----  [ 2 ] セ ン サ ー 類 読 み 取 り --------------------------------------------------
-  //[2-1] IMUの値を取得
-  if (IMU_MOUNT == 1) {
-    if (merc % IMU_FREQ == 0) {// IMU_FREQ(ms)ごとに読み取り
-      getYawPitchRoll();
+    // [1-2] ESP32からのSPI受信データチェックサム確認と成否のシリアル表示
+    //チェックサムがOKならバッファから受信配列に転記
+    if (checksum_rslt(r_spi_meridim_dma.sval, MSG_SIZE))
+    {
+      if (monitor_resv_check) {
+        Serial.println("Rvok! ");//受信OKのシリアル表示
+      }
+      for (int i = 0; i < MSG_SIZE; i++) {
+        r_spi_meridim.sval[i] = r_spi_meridim_dma.sval[i];
+      }
+      spi_ok ++;
+      r_spi_meridim.bval[177] &= B11011111; //エラーフラグ13番(TeensyのESPからのSPI受信エラー検出)をオフ
+    } else
+    {
+      if (monitor_resv_check) {
+        Serial.println("RvNG****");//受信NGのシリアル表示
+        r_spi_meridim.bval[177] |= B00100000; //エラーフラグ13番(TeensyのESPからのSPI受信エラー検出)をオン
+      }
+    }
+
+    // [1-3] 通信エラー処理(スキップ検出)
+    frame_sync_r_expect ++;//フレームカウント予想値を加算
+    if (frame_sync_r_expect > 199) { //予想値が200以上ならカウントを0に戻す
+      frame_sync_r_expect = 0;
+    }
+
+    //Serial.print(int(frame_sync_r_resv));
+    //Serial.print(":");
+    //Serial.println(int(frame_sync_r_expect));
+
+    //frame_sync_rの確認(受信フレームにスキップが生じていないかをMeridim[88]の下位8ビットのカウンターで判断)
+    frame_sync_r_resv = r_spi_meridim.bval[176];//数値を受け取る
+
+    if (frame_sync_r_resv == frame_sync_r_expect) //frame_sync_rの受信値が期待通りなら順番どおり受信
+    {
+      r_spi_meridim.bval[177] &= B11111101; //エラーフラグ9番(Teensy受信のスキップ検出)をオフ
+      //Serial.println("Tsy sequensial OK!");
+    } else
+    {
+      r_spi_meridim.bval[177] |= B00000010; //エラーフラグ9番(Teensy受信のスキップ検出)をオン
+      if (frame_sync_r_resv == frame_sync_r_expect - 1)
+      {
+        frame_sync_r_expect = frame_sync_r_resv + 1; //同じ値を２回取得した場合には実際はシーケンスが進んだものとして補正（アルゴリズム要検討）
+      } else
+      {
+        frame_sync_r_expect = frame_sync_r_resv; //取りこぼしについては現在の受信値を正解の予測値としてキープ
+      }
+      err_tsy_skip ++;
+    }
+
+    // [1-4] 通信エラー処理(エラーカウンタへの反映)
+    if ((r_spi_meridim.bval[177] >> 7) & B00000001)//Meridim[88] bit15:PCのESP32からのUDP受信エラー
+    {
+      err_esp_pc ++;
+    }
+    if ((r_spi_meridim.bval[177] >> 6) & B00000001)//Meridim[88] bit14:ESP32のPCからのUDP受信エラー
+    {
+      err_pc_esp ++;
+    }
+    if ((r_spi_meridim.bval[177] >> 5) & B00000001)//Meridim[88] bit13:TeensyのESPからのSPI受信エラー
+    {
+      err_esp_tsy ++;
+    }
+    if ((r_spi_meridim.bval[177] >> 4) & B00000001)//Meridim[88] bit12:ESP32のTeensyからのSPI受信エラー
+    {
+      err_tsy_esp ++;
+    }
+    if ((r_spi_meridim.bval[177] >> 2) & B00000001)//Meridim[88] bit10:UDP→ESP受信のカウントのスキップ
+    {
+      err_esp_skip ++;
+    }
+    if ((r_spi_meridim.bval[177] >> 1) & B00000001)//Meridim[88] bit9:ESP→Teensy受信のカウントのスキップ
+    {
+      err_tsy_skip ++;
+    }
+    if ((r_spi_meridim.bval[177]) & B00000001)//Meridim[88] bit8:PC受信のカウントのスキップ
+    {
+      err_pc_skip ++;
+    }
+
+    //----  [ 2 ] シ リ ア ル モ ニ タ リ ン グ 表 示 処 理 2 -------------------------------
+
+    // [2-1] //受信データの表示（SPI受信データShort型）
+    if (monitor_resv) {
+      Serial.print("  [Resv] ");
+      for (int i = 0; i < MSG_SIZE; i++) {
+        Serial.print(int (r_spi_meridim.sval[i]));
+        Serial.print(",");
+      }
+      Serial.println();
+    }
+
+    // [2-2] //受信エラー率の表示
+    if (monitor_resv_error) {
+      if (spi_trial % 200 == 0) {
+        Serial.print("error rate ");
+        Serial.print(float(spi_trial - spi_ok) / float(spi_trial) * 100);
+        Serial.print(" %  ");
+        Serial.print(spi_trial - spi_ok);
+        Serial.print("/");
+        Serial.println(spi_trial);
+      }
+    }
+
+    // [2-3] 全経路のエラー数の表示
+    if (monitor_all_error) {
+      Serial.print("[ERRORs] esp->pc:");
+      Serial.print(err_esp_pc);
+      Serial.print("  pc->esp:");
+      Serial.print(err_pc_esp);
+      Serial.print("  esp->tsy:");
+      Serial.print(err_esp_tsy);
+      Serial.print("  tsy->esp:");
+      Serial.print(err_esp_tsy);
+      Serial.print("  tsy-skip:");
+      Serial.print(err_tsy_skip);//
+      Serial.print("  esp-skip:");
+      Serial.print(err_esp_skip);//
+      Serial.print("  pc-skip:");
+      Serial.print(err_pc_skip);//
+      Serial.print("  seq:");
+      Serial.print(int(frame_sync_r_resv));//
+      Serial.print("  [ERR]:");
+      Serial.print(r_spi_meridim.bval[177], BIN);
+      Serial.println();
     }
   }
 
+  //----  [ 3 ] 積 み 残 し 処 理  -------------------------------------------------
+  //積み残しがあればここで処理
 
-  //----  [ 3 ] コ ン ト ロ ー ラ の 読 み 取 り  -------------------------------------------
-  //[3-1] コントローラの値を取得
+  //----  [ 4 ] 受 信 S P I デ ー タ を 送 信 S P I デ ー タ に 転 記  -----------------------
+  memcpy(s_spi_meridim.bval, r_spi_meridim.bval, MSG_BUFF + 4);
+
+  //----  [ 5 ] セ ン サ ー 類 読 み 取 り --------------------------------------------------
+  //[5-1] IMUの値を取得
+  //※IMUについてはタイマー割り込みで別途処理
+
+
+  //----  [ 6 ] コ ン ト ロ ー ラ の 読 み 取 り  -------------------------------------------
+  //[6-1] コントローラの値を取得
   if (JOYPAD_MOUNT == 1) {//SBDBTが接続設定されていれば受信チェック（未実装）
     Serial.print("SBDBT connection has not been programmed yet.");
   }
@@ -685,9 +862,9 @@ void loop() {
   }
 
 
-  //----  [ 4 ] Teensy 内 部 で 位 置 制 御 す る 場 合 の 処 理 -----------------------------
+  //----  [ 7 ] Teensy 内 部 で 位 置 制 御 す る 場 合 の 処 理 -----------------------------
 
-  // [4-1] マスターコマンドの判定によりこの工程の実行orスキップを分岐(デフォルトはMeridim配列数である90)
+  // [7-1] マスターコマンドの判定によりこの工程の実行orスキップを分岐(デフォルトはMeridim配列数である90)
 
   //コマンド[90]: サーボオン 通常動作
 
@@ -705,28 +882,28 @@ void loop() {
     trimadjustment();
   }
 
-  // [4-2] 前回のラストに読み込んだサーボ位置をサーボ配列に書き込む
+  // [7-2] 前回のラストに読み込んだサーボ位置をサーボ配列に書き込む
   for (int i = 0; i < 15; i++) {
     s_KRS_servo_pos_L[i] = Deg2Krs(float(r_spi_meridim.sval[i * 2 + 21]) / 100 * idl_pn[i], idl_n[i]); //
     s_KRS_servo_pos_R[i] = Deg2Krs(r_spi_meridim.sval[i * 2 + 51] / 100 * idr_pn[i], idr_n[i]); //
   }
 
-  // [4-3] Teensyによる次回動作の計算
+  // [7-3] Teensyによる次回動作の計算
 
-  // [4-4] センサーデータによる動作へのフィードバック加味
+  // [7-4] センサーデータによる動作へのフィードバック加味
 
-  // [4-5] 移動時間の決定
+  // [7-5] 移動時間の決定
 
-  // [4-6] Teensy内計算による次回動作をMeridim配列に書き込む
+  // [7-6] Teensy内計算による次回動作をMeridim配列に書き込む
 
 
-  //----  [ 5 ] サ ー ボ コ マ ン ド の 書 き 込 み ------------------------------------------
+  //----  [ 8 ] サ ー ボ コ マ ン ド の 書 き 込 み ------------------------------------------
 
-  // [5-1] Meridim配列をサーボ命令に変更
+  // [8-1] Meridim配列をサーボ命令に変更
 
-  // [5-2] サーボコマンドの配列に書き込み
+  // [8-2] サーボコマンドの配列に書き込み
 
-  // [5-3] サーボデータのICS送信および返り値を取得
+  // [8-3] サーボデータのICS送信および返り値を取得
   //ICS_L系統の処理
   for (int i = 0; i < 11; i ++) {//接続したサーボの数だけ繰り返す。最大は15
     idl_d[i] = 0;
@@ -757,33 +934,35 @@ void loop() {
   }
 
 
-  //----  [ 6 ] S P I 送 信 用 の Meridim 配 列 を 作 成 す る -------------------------------
+  //----  [ 9 ] S P I 送 信 用 の Meridim 配 列 を 作 成 す る -------------------------------
 
-  // [6-1] マスターコマンドを配列に格納
+  // [9-1] マスターコマンドを配列に格納
   //s_spi_meridim.sval[0] = MSG_SIZE ;//デフォルトのマスターコマンドは配列数
 
-  // [6-2] 移動時間を配列に格納
+  // [9-2] 移動時間を配列に格納
   //s_spi_meridim.sval[1] = 10 ;//(移動時間）
 
-  // [6-3] センサー値を配列に格納
+  // [9-3] センサー値を配列に格納
   if (IMU_MOUNT == 1) {
-    s_spi_meridim.sval[2] = float2HFshort(mpu_data[0]); //IMU_acc_x
-    s_spi_meridim.sval[3] = float2HFshort(mpu_data[1]); //IMU_acc_y
-    s_spi_meridim.sval[4] = float2HFshort(mpu_data[2]); //IMU_acc_z
-    s_spi_meridim.sval[5] = float2HFshort(mpu_data[3]); //IMU_gyro_x
-    s_spi_meridim.sval[6] = float2HFshort(mpu_data[4]); //IMU_gyro_y
-    s_spi_meridim.sval[7] = float2HFshort(mpu_data[5]); //IMU_gyro_z
-    s_spi_meridim.sval[8] = float2HFshort(mpu_data[6]); //IMU_mag_x
-    s_spi_meridim.sval[9] = float2HFshort(mpu_data[7]); //IMU_mag_y
-    s_spi_meridim.sval[10] = float2HFshort(mpu_data[8]);//IMU_mag_z
-    s_spi_meridim.sval[11] = float2HFshort(mpu_data[9]);//IMU_
-    s_spi_meridim.sval[12] = float2HFshort(ROLL);       //DMP_roll
-    s_spi_meridim.sval[13] = float2HFshort(PITCH);      //DMP_pitch
-    s_spi_meridim.sval[14] = float2HFshort(YAW);        //DMP_yaw
-    s_spi_meridim.sval[15] = float2HFshort(mpu_data[15]);//tempreature
+    flag_sensor_imu_writable = false;
+    s_spi_meridim.sval[2] = float2HFshort(mpu_result[0]);  //IMU_acc_x
+    s_spi_meridim.sval[3] = float2HFshort(mpu_result[1]);  //IMU_acc_y
+    s_spi_meridim.sval[4] = float2HFshort(mpu_result[2]);  //IMU_acc_z
+    s_spi_meridim.sval[5] = float2HFshort(mpu_result[3]);  //IMU_gyro_x
+    s_spi_meridim.sval[6] = float2HFshort(mpu_result[4]);  //IMU_gyro_y
+    s_spi_meridim.sval[7] = float2HFshort(mpu_result[5]);  //IMU_gyro_z
+    s_spi_meridim.sval[8] = float2HFshort(mpu_result[6]);  //IMU_mag_x
+    s_spi_meridim.sval[9] = float2HFshort(mpu_result[7]);  //IMU_mag_y
+    s_spi_meridim.sval[10] = float2HFshort(mpu_result[8]); //IMU_mag_z
+    s_spi_meridim.sval[11] = float2HFshort(mpu_result[9]); //IMU_
+    s_spi_meridim.sval[12] = float2HFshort(mpu_result[12]);//DMP_ROLL推定値
+    s_spi_meridim.sval[13] = float2HFshort(mpu_result[13]);//DMP_PITCH推定値
+    s_spi_meridim.sval[14] = float2HFshort(mpu_result[14]);//DMP_YAW推定値
+    s_spi_meridim.sval[15] = float2HFshort(mpu_result[15]);//tempreature
+    flag_sensor_imu_writable = true;
   }
 
-  // [6-4] サーボIDごとにの現在位置もしくは計算結果を配列に格納
+  // [9-4] サーボIDごとにの現在位置もしくは計算結果を配列に格納
   for (int i = 0; i < 15; i++) {
     s_spi_meridim.sval[i * 2 + 20] = 0; //仮にここでは各サーボのコマンドを脱力&ポジション指示(0)に設定
     s_spi_meridim.sval[i * 2 + 21] = float2HFshort(idl_d[i]); //仮にここでは最新のサーボ角度degreeを格納
@@ -793,27 +972,27 @@ void loop() {
     s_spi_meridim.sval[i * 2 + 51] = float2HFshort(idr_d[i]); //仮にここでは最新のサーボ角度degreeを格納
   }
 
-  // [6-5] フレームスキップ検出用のカウントをカウントアップして送信用に格納
+  // [9-5] フレームスキップ検出用のカウントをカウントアップして送信用に格納
   frame_sync_s ++;
   if (frame_sync_s > 199) {
     frame_sync_s = 0;
   }
   s_spi_meridim.bval[176] = frame_sync_s;
 
-  // [6-6] カスタムデータを配列格納
+  // [9-6] カスタムデータを配列格納
 
-  // [6-7] チェックサムを計算
+  // [9-7] チェックサムを計算
   s_spi_meridim.sval[MSG_SIZE - 1] = checksum_val(s_spi_meridim.sval, MSG_SIZE);
 
-  // [6-8] 送信データのSPIバッファへのバイト型書き込み
+  // [9-8] 送信データのSPIバッファへのバイト型書き込み
   for (int i = 0; i < MSG_BUFF; i++) {
     s_spi_meridim_dma.bval[i] = s_spi_meridim.bval[i];
   }
 
 
-  //----  [ 7 ] シ リ ア ル モ ニ タ リ ン グ 表 示 処 理 1 -------------------------------
+  //----  [ 10 ] シ リ ア ル モ ニ タ リ ン グ 表 示 処 理 1 -------------------------------
 
-  // [7-1] シリアルモニタ表示（SPI送信データShort型）
+  // [10-1] シリアルモニタ表示（SPI送信データShort型）
   if (monitor_src == 1) {
     Serial.print("   [Src] ");
     for (int i = 0; i < MSG_SIZE; i++) {
@@ -822,7 +1001,7 @@ void loop() {
     }
     Serial.println();
   }
-  // [7-1] シリアルモニタ表示（SPI送信データChar型）
+  // [10-1] シリアルモニタ表示（SPI送信データChar型）
   if (monitor_send == 1) {
     Serial.print("  [Send] ");
     for (int i = 0; i < MSG_BUFF; i++) {
@@ -833,9 +1012,9 @@ void loop() {
   }
 
 
-  //----  [ 8 ] フ レ ー ム 終 端 処 理 ----------------------------------------------
+  //----  [ 11 ] フ レ ー ム 終 端 処 理 ----------------------------------------------
 
-  // [8-1] この時点で１フレーム内に処理が収まっていない時の処理
+  // [11-1] この時点で１フレーム内に処理が収まっていない時の処理
   curr = (long)millis(); // 現在時刻を更新
   if (curr > merc) { // 現在時刻がフレーム管理時計を超えていたらアラートを出す
     //シリアルに遅延msを表示
@@ -847,7 +1026,7 @@ void loop() {
     digitalWrite(ERR_LED, LOW);//処理が収まっていればLEDを消灯
   }
 
-  // [8-2] この時点で時間が余っていたら時間消化。時間がオーバーしていたらこの処理を自然と飛ばす。
+  // [11-2] この時点で時間が余っていたら時間消化。時間がオーバーしていたらこの処理を自然と飛ばす。
   curr = (long)millis();
   curr_micro = (long)micros(); // 現在時刻を取得
   //Serial.println(merc * 1000 - curr_micro); //詳細な残り時間をμ秒単位でシリアル表示
@@ -855,152 +1034,7 @@ void loop() {
     curr = (long)millis();
   }
 
-  // [8-3]フレーム管理時計mercのカウントアップ
+  // [11-3]フレーム管理時計mercのカウントアップ
   merc = merc + frame_ms;//フレーム管理時計を1フレーム分進める
   frame_count = frame_count + frame_count_diff;//サインカーブ動作用のフレームカウントをいくつずつ進めるかをここで設定。
-
-
-  //----  [ 9 ] E S P 3 2 と の S P I に よ る 送 受 信 処 理 -------------------------------
-
-  // [9-1] ESP32とのSPI送受信の実行
-  if (ESP32_MOUNT) {
-    TsyDMASPI0.transfer(s_spi_meridim_dma.bval, r_spi_meridim_dma.bval, MSG_BUFF);
-
-    spi_trial ++;//SPI送受信回数のカウント
-
-
-    // [9-2] ESP32からのSPI受信データチェックサム確認と成否のシリアル表示
-    //チェックサムがOKならバッファから受信配列に転記
-    if (checksum_rslt(r_spi_meridim_dma.sval, MSG_SIZE))
-    {
-      if (monitor_resv_check) {
-        Serial.println("Rvok! ");//受信OKのシリアル表示
-      }
-      for (int i = 0; i < MSG_SIZE; i++) {
-        r_spi_meridim.sval[i] = r_spi_meridim_dma.sval[i];
-      }
-      spi_ok ++;
-      r_spi_meridim.bval[177] &= B11011111; //エラーフラグ13番(TeensyのESPからのSPI受信エラー検出)をオフ
-    } else
-    {
-      if (monitor_resv_check) {
-        Serial.println("RvNG****");//受信NGのシリアル表示
-        r_spi_meridim.bval[177] |= B00100000; //エラーフラグ13番(TeensyのESPからのSPI受信エラー検出)をオン
-      }
-    }
-
-    // [9-3] 通信エラー処理(スキップ検出)
-    frame_sync_r_expect ++;//フレームカウント予想値を加算
-    if (frame_sync_r_expect > 199) { //予想値が200以上ならカウントを0に戻す
-      frame_sync_r_expect = 0;
-    }
-
-    //Serial.print(int(frame_sync_r_resv));
-    //Serial.print(":");
-    //Serial.println(int(frame_sync_r_expect));
-
-    //frame_sync_rの確認(受信フレームにスキップが生じていないかをMeridim[88]の下位8ビットのカウンターで判断)
-    frame_sync_r_resv = r_spi_meridim.bval[176];//数値を受け取る
-
-    if (frame_sync_r_resv == frame_sync_r_expect) //frame_sync_rの受信値が期待通りなら順番どおり受信
-    {
-      r_spi_meridim.bval[177] &= B11111101; //エラーフラグ9番(Teensy受信のスキップ検出)をオフ
-      //Serial.println("Tsy sequensial OK!");
-    } else
-    {
-      r_spi_meridim.bval[177] |= B00000010; //エラーフラグ9番(Teensy受信のスキップ検出)をオン
-      if (frame_sync_r_resv == frame_sync_r_expect - 1)
-      {
-        frame_sync_r_expect = frame_sync_r_resv + 1; //同じ値を２回取得した場合には実際はシーケンスが進んだものとして補正（アルゴリズム要検討）
-      } else
-      {
-        frame_sync_r_expect = frame_sync_r_resv; //取りこぼしについては現在の受信値を正解の予測値としてキープ
-      }
-      err_tsy_skip ++;
-    }
-
-    // [9-4] 通信エラー処理(エラーカウンタへの反映)
-    if ((r_spi_meridim.bval[177] >> 7) & B00000001)//Meridim[88] bit15:PCのESP32からのUDP受信エラー
-    {
-      err_esp_pc ++;
-    }
-    if ((r_spi_meridim.bval[177] >> 6) & B00000001)//Meridim[88] bit14:ESP32のPCからのUDP受信エラー
-    {
-      err_pc_esp ++;
-    }
-    if ((r_spi_meridim.bval[177] >> 5) & B00000001)//Meridim[88] bit13:TeensyのESPからのSPI受信エラー
-    {
-      err_esp_tsy ++;
-    }
-    if ((r_spi_meridim.bval[177] >> 4) & B00000001)//Meridim[88] bit12:ESP32のTeensyからのSPI受信エラー
-    {
-      err_tsy_esp ++;
-    }
-    if ((r_spi_meridim.bval[177] >> 2) & B00000001)//Meridim[88] bit10:UDP→ESP受信のカウントのスキップ
-    {
-      err_esp_skip ++;
-    }
-    if ((r_spi_meridim.bval[177] >> 1) & B00000001)//Meridim[88] bit9:ESP→Teensy受信のカウントのスキップ
-    {
-      err_tsy_skip ++;
-    }
-    if ((r_spi_meridim.bval[177]) & B00000001)//Meridim[88] bit8:PC受信のカウントのスキップ
-    {
-      err_pc_skip ++;
-    }
-
-    //----  [ 10 ] シ リ ア ル モ ニ タ リ ン グ 表 示 処 理 2 -------------------------------
-
-    // [10-1] //受信データの表示（SPI受信データShort型）
-    if (monitor_resv) {
-      Serial.print("  [Resv] ");
-      for (int i = 0; i < MSG_SIZE; i++) {
-        Serial.print(int (r_spi_meridim.sval[i]));
-        Serial.print(",");
-      }
-      Serial.println();
-    }
-
-    // [10-2] //受信エラー率の表示
-    if (monitor_resv_error) {
-      if (spi_trial % 200 == 0) {
-        Serial.print("error rate ");
-        Serial.print(float(spi_trial - spi_ok) / float(spi_trial) * 100);
-        Serial.print(" %  ");
-        Serial.print(spi_trial - spi_ok);
-        Serial.print("/");
-        Serial.println(spi_trial);
-      }
-    }
-
-    // [10-3] 全経路のエラー数の表示
-    if (monitor_all_error) {
-      Serial.print("[ERRORs] esp->pc:");
-      Serial.print(err_esp_pc);
-      Serial.print("  pc->esp:");
-      Serial.print(err_pc_esp);
-      Serial.print("  esp->tsy:");
-      Serial.print(err_esp_tsy);
-      Serial.print("  tsy->esp:");
-      Serial.print(err_esp_tsy);
-      Serial.print("  tsy-skip:");
-      Serial.print(err_tsy_skip);//
-      Serial.print("  esp-skip:");
-      Serial.print(err_esp_skip);//
-      Serial.print("  pc-skip:");
-      Serial.print(err_pc_skip);//
-      Serial.print("  seq:");
-      Serial.print(int(frame_sync_r_resv));//
-      Serial.print("  [ERR]:");
-      Serial.print(r_spi_meridim.bval[177], BIN);
-      Serial.println();
-    }
-  }
-
-  //----  [ 11 ] 積 み 残 し 処 理  -------------------------------------------------
-  //今回の受信カウンタを次回のpastとしてキープ(補正あり)
-  //frame_sync_r_resv_past = frame_sync_r_resv + frame_sync_r_expect;
-  //if (frame_sync_r_resv_past > 199) {
-  //  frame_sync_r_resv_past = 0;
-  //}
 }
