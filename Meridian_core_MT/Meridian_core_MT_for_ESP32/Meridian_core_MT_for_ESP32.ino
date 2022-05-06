@@ -1,5 +1,5 @@
 
-// Meridian_core_MT_for_ESP32_2022.05.06d By Izumi Ninagawa & Meridian Project
+// Meridian_core_MT_for_ESP32_2022.05.06a By Izumi Ninagawa & Meridian Project
 // MIT Licenced.
 //
 // Teensy4.0 - (SPI) - ESP32DevKitC - (Wifi/UDP) - PC/python
@@ -17,10 +17,10 @@
 //---------------------------------------------------
 
 // (ES-1-1) 変更頻度高め
-#define VERSION "Meridian_core_MT_for_ESP32_2022.05.06d"//バージョン表示
+#define VERSION "Meridian_core_MT_for_ESP32_2022.05.06a"//バージョン表示
 #define AP_SSID "xxxxxx" //アクセスポイントのAP_SSID
 #define AP_PASS "xxxxxx" //アクセスポイントのパスワード
-#define SEND_IP "192.168.1.26" //送り先のPCのIPアドレス（PCのIPアドレスを調べておく）
+#define SEND_IP "192.168.1.xx" //送り先のPCのIPアドレス（PCのIPアドレスを調べておく）
 //#define AP_SSID "xxxxxx" //アクセスポイントのAP_SSID
 //#define AP_PASS "xxxxxx" //アクセスポイントのパスワード
 //#define SEND_IP "192.168.xx.xx" //送り先のPCのIPアドレス（PCのIPアドレスを調べておく）
@@ -312,7 +312,8 @@ void Core0_UDP_r(void *args) {//サブCPU(Core0)で実行するプログラム
 void receiveUDP() {
   //Serial.println("receiveUDP()");
   while (udp_sending_flag) {
-    delayMicroseconds(10);
+    //delayMicroseconds(10);
+    delay(1);
   }
   int packetSize = udp.parsePacket();//受信済みのパケットサイズを取得
   byte tmpbuf[MSG_BUFF];
