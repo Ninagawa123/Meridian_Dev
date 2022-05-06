@@ -205,11 +205,10 @@ def meridian_loop():
                 loop_count += 1 #このpythonを起動してからのフレーム数をカウントアップ
 
                 r_bin_data_past = r_bin_data
-                
+
                 while r_bin_data_past == r_bin_data:
                     r_bin_data,addr = sock.recvfrom(1472) #UDPに受信したデータを転記してキープ
 
-                print(r_bin_data)
                 r_meridim=struct.unpack('90h',r_bin_data) #short型のMeridim90を作成
                 r_meridim_char=struct.unpack('180b',r_bin_data) #読み取り用のchar型Meridim(180)を作成
                 message1 = "UDP data receiving from "+UDP_SEND_IP #受信中のメッセージ表示
@@ -357,7 +356,7 @@ def meridian_loop():
                 checksum[0] = ~checksum_int
                 s_meridim[MSG_SIZE-1]=checksum[0]
 
-                time.sleep(2/1000) #少し休む場合
+                #time.sleep(2/1000) #少し休む場合
 
                 #データをパックしてUDP送信
                 s_bin_data=struct.pack('90h',*s_meridim)
@@ -509,7 +508,7 @@ def main():
         
         # dpg描画 ==================================================
         dpg.create_context()
-        dpg.create_viewport(title=TITLE_VERSION, width=600, height=520)
+        dpg.create_viewport(title=TITLE_VERSION, width=617, height=560)
 
         # （画面左上）サーボ位置モニタリング用のウィンドウ ==================================================
         with dpg.window(label="Axis Monitor", width=250, height=350,pos=[5,5]):
