@@ -205,10 +205,13 @@ def meridian_loop():
                 loop_count += 1 #このpythonを起動してからのフレーム数をカウントアップ
 
                 r_bin_data_past = r_bin_data
+                r_bin_data,addr = sock.recvfrom(1472) #UDPに受信したデータを転記してキープ
 
                 while r_bin_data_past == r_bin_data:
                     r_bin_data,addr = sock.recvfrom(1472) #UDPに受信したデータを転記してキープ
-
+                    print("wait")
+                print("GO")
+                
                 r_meridim=struct.unpack('90h',r_bin_data) #short型のMeridim90を作成
                 r_meridim_char=struct.unpack('180b',r_bin_data) #読み取り用のchar型Meridim(180)を作成
                 message1 = "UDP data receiving from "+UDP_SEND_IP #受信中のメッセージ表示
