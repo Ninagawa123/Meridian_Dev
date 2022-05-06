@@ -1,4 +1,5 @@
-// Meridian_core_for_ESP32_2022.04.24 By Izumi Ninagawa & Meridian Project
+
+// Meridian_core_MT_for_ESP32_2022.05.06d By Izumi Ninagawa & Meridian Project
 // MIT Licenced.
 //
 // Teensy4.0 - (SPI) - ESP32DevKitC - (Wifi/UDP) - PC/python
@@ -16,15 +17,18 @@
 //---------------------------------------------------
 
 // (ES-1-1) 変更頻度高め
-#define VERSION "Meridian_core_for_ESP32_2022.04.24"//バージョン表示
+#define VERSION "Meridian_core_MT_for_ESP32_2022.05.06d"//バージョン表示
 #define AP_SSID "xxxxxx" //アクセスポイントのAP_SSID
 #define AP_PASS "xxxxxx" //アクセスポイントのパスワード
-#define SEND_IP "192.168.1.xxx" //送り先のPCのIPアドレス（PCのIPアドレスを調べておく）
+#define SEND_IP "192.168.1.26" //送り先のPCのIPアドレス（PCのIPアドレスを調べておく）
+//#define AP_SSID "xxxxxx" //アクセスポイントのAP_SSID
+//#define AP_PASS "xxxxxx" //アクセスポイントのパスワード
+//#define SEND_IP "192.168.xx.xx" //送り先のPCのIPアドレス（PCのIPアドレスを調べておく）
 
 //IPを固定する場合は下記の4項目を設定し、(ES-4-1) WiFi.configを有効にする 固定しない場合はコメントアウト必須
-//IPAddress ip(192,168,xxx,xxx);//ESP32のIPアドレスを固定する場合のアドレス
+//IPAddress ip(192,168,xx,xx);//ESP32のIPアドレスを固定する場合のアドレス
 //IPAddress subnet(255,255,255,0);//ESP32のIPアドレス固定する場合のサブネット
-//IPAddress gateway(192,168,xxx,xxx);//ルーターのゲートウェイを入れる
+//IPAddress gateway(192,168,xx,xx);//ルーターのゲートウェイを入れる
 //IPAddress DNS(8,8,8,8);//DNSサーバーの設定（使用せず）
 
 // (ES-1-2) シリアルモニタリング切り替え
@@ -69,7 +73,6 @@ ESP32Wiimote wiimote;
 uint8_t pairedDeviceBtAddr[PAIR_MAX_DEVICES][6];
 char bda_str[18];
 
-
 //---------------------------------------------------
 // [VARIABLE] 変数関連 (ES-3-VAL) --------------------
 //---------------------------------------------------
@@ -86,12 +89,12 @@ uint8_t* r_spi_meridim_dma;//DMA用
 TaskHandle_t thp[4];//マルチスレッドのタスクハンドル格納用
 
 // (ES-3-2) フラグ関連
-bool udp_resv_flag = 0;//UDPスレッドでの受信完了フラグ
+bool udp_revd_flag = 0;//UDPスレッドでの受信完了フラグ
 bool udp_resv_process_queue_flag = 0;//UDP受信済みデータの処理待ちフラグ
 bool udp_send_flag = 0;//UDP送信完了フラグ
-bool spi_resv_flag = 0;//SPI受信完了フラグ
-bool udp_resv_busy = 0;//UDPスレッドでの受信中フラグ（送信抑制）
-bool udp_send_busy = 0;//UDPスレッドでの送信中フラグ（受信抑制）
+bool spi_revd_flag = 0;//SPI受信完了フラグ
+bool udp_receiving_flag = 0;//UDPスレッドでの受信中フラグ（送信抑制）
+bool udp_sending_flag = 0;//UDPスレッドでの送信中フラグ（受信抑制）
 char frame_sync_s = 0;//フレーム毎に0-199をカウントし、送信用Meridm[88]の下位8ビットに格納
 char frame_sync_r_expect = 0;//フレーム毎に前回受信値に+１として受信値と比較（0-199)
 char frame_sync_r_resv = 0;//今フレームに受信したframe_sync_rを格納
@@ -220,7 +223,7 @@ void setup()
   }
 
   // (ES-4-10) マルチスレッドの宣言（無線系はすべてCORE0で動くとのこと.メインループはCORE1）
-  xTaskCreatePinnedToCore(Core0_UDP_s, "Core0_UDP_s", 4096, NULL, 10, &thp[0], 0);
+  //xTaskCreatePinnedToCore(Core0_UDP_s, "Core0_UDP_s", 4096, NULL, 10, &thp[0], 0);
   xTaskCreatePinnedToCore(Core0_UDP_r, "Core0_UDP_r", 4096, NULL, 20, &thp[1], 0);
   xTaskCreatePinnedToCore(Core0_BT_r, "Core0_BT_r", 4096, NULL, 5, &thp[2], 0);
 
@@ -297,7 +300,7 @@ bool checksum_rslt(short arr[], int len) {
 void Core0_UDP_r(void *args) {//サブCPU(Core0)で実行するプログラム
   delay(1000);
   while (1) {
-    while (udp_send_busy == false) {
+    while (udp_sending_flag == false) {
       receiveUDP();//常にUDPの受信を待ち受けし、受信が完了したらフラグを挙げる
       delay(1);//1/1000秒待つ
     }
@@ -308,20 +311,27 @@ void Core0_UDP_r(void *args) {//サブCPU(Core0)で実行するプログラム
 // ■ 受信用の関数 パケットが来ていれば、MSG_BUFF 分だけr_udp_meridim.bval配列に保存 -----
 void receiveUDP() {
   //Serial.println("receiveUDP()");
+  while (udp_sending_flag) {
+    delayMicroseconds(10);
+  }
   int packetSize = udp.parsePacket();//受信済みのパケットサイズを取得
   byte tmpbuf[MSG_BUFF];
 
   //データの受信
   if (packetSize >= MSG_BUFF) {//受信済みのパケットサイズを確認し、配列分受信できていたら読み出し
-    udp_resv_busy = 1;
+
+
+    udp_receiving_flag = 1;
     udp.read(tmpbuf, MSG_BUFF);
-    for (int i = 0; i < MSG_BUFF; i++)
-    {
-      r_udp_meridim.bval[i] = tmpbuf[i];
-    }
+    memcpy(r_udp_meridim.bval, tmpbuf, MSG_BUFF);
+    //for (int i = 0; i < MSG_BUFF; i++)
+    //{
+    //  r_udp_meridim.bval[i] = tmpbuf[i];
+    //}
+
     //delayMicroseconds(10);
-    udp_resv_busy = false;
-    udp_resv_flag = true;//r_udp_meridimに受信完了した旨のフラグを挙げる
+    udp_receiving_flag = false;
+    udp_revd_flag = true;//r_udp_meridimに受信完了した旨のフラグを挙げる
   }
 }
 
@@ -333,10 +343,10 @@ void Core0_UDP_s(void *args) {//サブCPU(Core0)で実行するプログラム
   delay(1000);
   while (1) {
     if (udp_send_flag) {//メインループにより送信フラグが挙がったら送信実行
-      udp_send_busy = true;//送信busyフラグを挙げる.
+      udp_sending_flag = true;//送信busyフラグを挙げる.
       sendUDP();
       delayMicroseconds(10);
-      udp_send_busy = false;//送信busyフラグを下げる.
+      udp_sending_flag = false;//送信busyフラグを下げる.
       udp_send_flag = false;
     }
     delay(1);//1/1000秒待つ
@@ -346,9 +356,7 @@ void Core0_UDP_s(void *args) {//サブCPU(Core0)で実行するプログラム
 // ■ 送信用の関数 ----------------------------------------------------------
 void sendUDP() {
   udp.beginPacket(SEND_IP, SEND_PORT);//UDPパケットの開始
-  for (int i = 0; i < MSG_BUFF; i++) {
-    udp.write(s_udp_meridim.bval[i]);//１バイトずつ送信
-  }
+  udp.write(s_udp_meridim.bval, MSG_BUFF);//一括送信
   udp.endPacket();//UDPパケットの終了
 }
 
@@ -485,8 +493,8 @@ void loop()
   //  --->> [check!] UDP受信は別スレッド void Core0_UDP_r() で実行されている.
 
   //[1-2] UDP受信配列からSPI送信配列にデータを転写.
-  if (udp_resv_flag) {//UDP受信完了フラグをチェック.(UDP受信データ r_udp_meridim の更新が完了している状態か?)
-    udp_resv_flag = false;//UDP受信完了フラグを下げる.
+  if (udp_revd_flag) {//UDP受信完了フラグをチェック.(UDP受信データ r_udp_meridim の更新が完了している状態か?)
+    udp_revd_flag = false;//UDP受信完了フラグを下げる.
 
     // [1-2-1] UDP受信データ r_udp_meridim のチェックサムを確認.
     if (checksum_rslt(r_udp_meridim.sval, MSG_SIZE))
@@ -590,10 +598,15 @@ void loop()
 
     //----  [ 5 ]  U D P 送 信 ----------------------------------------------
     //[5-1] UDP送信を実行
-    while (udp_resv_busy) //UDPが受信処理中なら送信しない
-    {
+    udp_sending_flag = true;
+    sendUDP();
+    udp_sending_flag = false;
+    /*
+      while (udp_receiving_flag) //UDPが受信処理中なら送信しない
+      {
       delayMicroseconds(2);
-    }
+      }
+    */
     udp_send_flag = true;//UDP送信準備完了フラグを挙げる.(スレッドCore0_UDP_sで送信実行)
   }
 }
