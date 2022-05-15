@@ -554,10 +554,12 @@ void loop()
   //  --->> [check!] 現在はここでとくに何もしない.
 
   //[2-2] リモコンデータの書き込み
+  if (JOYPAD_MOUNT != 0){ // リモコンが接続されていれば上書き、未接続ならばスルーする
   s_spi_meridim.sval[80] = pad_btn;
   s_spi_meridim.sval[81] = pad_stick_L;
   s_spi_meridim.sval[82] = pad_stick_R;
   s_spi_meridim.sval[83] = pad_stick_V;
+  }
   //  --->> [check!] ここでSPI送信データ s_spi_meridim はESP32で受けたリモコンデータが上書きされた状態.
 
   //[2-3] フレームスキップ検出用のカウントを転記して格納（PCからのカウントと同じ値をESPに転送）
