@@ -20,15 +20,15 @@
    21          -  BNO005 SDA
    GND         -  BNO005 GND
 
-   4  EN       -  ICS変換基板 L系統 EN
-   16 RX       -  ICS変換基板 L系統 TX
-   17 TX       -  ICS変換基板 L系統 RX
+   4  EN       -  ICS変換基板 R系統 EN
+   16 RX       -  ICS変換基板 R系統 TX
+   17 TX       -  ICS変換基板 R系統 RX
    5V          -  ICS変換基板 IOREF
    GND         -  ICS変換基板 GND
 
-   5  EN       -  ICS変換基板 R系統 EN
-   14 RX       -  ICS変換基板 R系統 TX
-   27 TX       -  ICS変換基板 R系統 RX
+   33 EN       -  ICS変換基板 L系統 EN
+   14 RX       -  ICS変換基板 L系統 TX
+   27 TX       -  ICS変換基板 L系統 RX
    5V          -  ICS変換基板 IOREF
    GND         -  ICS変換基板 GND
 */
@@ -70,12 +70,12 @@ bool UDP_RESEIVE = true;                // PCからのデータ受信を行う�
 #define ERR_LED 22           // LED用 処理が時間内に収まっていない場合に点灯
 #define BAUDRATE1 1250000    // サーボの通信速度
 #define TIMEOUT1 2           // サーボ返信エラーをスルーするのに程よい設定
-#define EN_PIN_L 5           // サーボL系統のENピン
+#define EN_PIN_L 33          // サーボL系統のENピン
 #define EN_PIN_R 4           // サーボR系統のENピン
 #define SERVO_NUM_L 11       // L系統につないだサーボの数
 #define SERVO_NUM_R 11       // R系統につないだサーボの数
-IcsHardSerialClass krs_L(&Serial1, EN_PIN_L, BAUDRATE1, TIMEOUT1); //サーボL系統UARTの設定（TX16,RX17,EN4）
-IcsHardSerialClass krs_R(&Serial2, EN_PIN_R, BAUDRATE1, TIMEOUT1); //サーボR系統UARTの設定（TX14,RX27,EN5）
+IcsHardSerialClass krs_L(&Serial1, EN_PIN_L, BAUDRATE1, TIMEOUT1); //サーボL系統UARTの設定（TX14,RX27,EN33）
+IcsHardSerialClass krs_R(&Serial2, EN_PIN_R, BAUDRATE1, TIMEOUT1); //サーボR系統UARTの設定（TX16,RX17,EN4）
 const int MSG_BUFF = MSG_SIZE * 2;                                 // Meridim配列の長さ設定（デフォルトは90）
 
 /* マルチスレッド用変数 */
