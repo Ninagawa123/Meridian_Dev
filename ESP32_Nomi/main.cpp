@@ -74,8 +74,8 @@ bool UDP_RESEIVE = true;                // PCからのデータ受信を行う�
 #define EN_PIN_R 4           // サーボR系統のENピン
 #define SERVO_NUM_L 11       // L系統につないだサーボの数
 #define SERVO_NUM_R 11       // R系統につないだサーボの数
-IcsHardSerialClass krs_L(&Serial1, EN_PIN_L, BAUDRATE1, TIMEOUT1); //サーボL系統UARTの設定（TX14,RX27,EN33）
-IcsHardSerialClass krs_R(&Serial2, EN_PIN_R, BAUDRATE1, TIMEOUT1); //サーボR系統UARTの設定（TX16,RX17,EN4）
+IcsHardSerialClass krs_L(&Serial1, EN_PIN_L, BAUDRATE1, TIMEOUT1); //サーボL系統UARTの設定（TX27,RX32,EN33）
+IcsHardSerialClass krs_R(&Serial2, EN_PIN_R, BAUDRATE1, TIMEOUT1); //サーボR系統UARTの設定（TX17,RX16,EN4）
 const int MSG_BUFF = MSG_SIZE * 2;                                 // Meridim配列の長さ設定（デフォルトは90）
 
 /* マルチスレッド用変数 */
