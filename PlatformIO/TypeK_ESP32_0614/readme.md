@@ -18,6 +18,7 @@
   
 ### PS4リモコンの導入
 libのインポートなどにルールがあり、下記にまとめました。  
+またPS4ライブラリをESP32用に修正する方法もまとめています。  
 https://qiita.com/Ninagawa_Izumi/items/d8966092fe2abd3cba79
   
 ### wiimoteの導入
