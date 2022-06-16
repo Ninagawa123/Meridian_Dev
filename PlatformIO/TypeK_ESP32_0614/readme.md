@@ -32,6 +32,6 @@ ESP32Wiimote.cpp, ESP32Wiimote.h, TinyWiimote.cpp, TinyWiimote.h
 platformio.iniをアップしてあるものに差し替える。
    
 ## PlatformIOとArduinoIDEの違い・注意点
-ArduinoIDEでxxxx.inoという名前だったスケッチは、PlatformIOではmain.cppとなる。  
+ArduinoIDEでxxxx.inoというスケッチのファイル名は、PlatformIOではmain.cppとなる。  
 main.cppの冒頭に必ず #include <Arduino.h> が必要。  
 Vscodeを使う時など、変数や関数の利用は宣言よりも後ろの行に書かないとエラーを吐く。  
