@@ -1,5 +1,8 @@
+# PlatformIOへの導入方法
+
 ### PlatformIO でプロジェクトを作成する
 「Meridian_TypeK_ESP32_0614」とする。
+フレームワークはArduinoを選ぶ。
   
 ### ボードの選択
 「Boads」メニューより検索で「Espressif 32」を選択。
@@ -28,3 +31,7 @@ ESP32Wiimote.cpp, ESP32Wiimote.h, TinyWiimote.cpp, TinyWiimote.h
 ### platformio.iniの変更
 platformio.iniをアップしてあるものに差し替える。
    
+# PlatformIOとArduinoIDEの違いの注意点
+ArduinoIDEでxxxx.inoという名前だったスケッチは、PlatformIOではmain.cppとなる。　
+main.cppの冒頭に必ず #include <Arduino.h> が必要。
+Vscodeを使う時など、変数や関数の利用は宣言よりも後ろの行に書かないとエラーを吐く。
