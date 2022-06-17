@@ -31,7 +31,11 @@ ESP32Wiimote.cpp, ESP32Wiimote.h, TinyWiimote.cpp, TinyWiimote.h
   
 ### platformio.iniの変更
 platformio.iniをアップしてあるものに差し替える。
-   
+行っている設定としては  
+・PCとのSerial通信速度設定を50000にする  
+・ライブラリの指定  
+・OTA（無線経由プログラム書き込み）の無効化によるパーティション拡張  
+  
 ## PlatformIOとArduinoIDEの違い・注意点
 ArduinoIDEでxxxx.inoというスケッチのファイル名は、PlatformIOではmain.cppとなる。  
 main.cppの冒頭に必ず #include <Arduino.h> が必要。  
