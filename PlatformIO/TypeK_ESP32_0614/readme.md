@@ -9,7 +9,7 @@
   
 ### ESP32のPlatformsのバージョン
 「Platforms」メニューより「Espressif 32」のバージョン「3.5.0」を選択。  
-※ 3.5.0は以降のアップデートに比べてwifiの性能がよい。
+※ 3.5.0はどういうわけか以降のアップデートに比べてwifiの性能がよい。
   
 ### 「ESP32DMASPI」の導入
 アリマーク→QUICK ACCESS→ PIO Home → Open → Libraries の検索窓で「ESP32DMASPI」  
