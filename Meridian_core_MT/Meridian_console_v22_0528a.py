@@ -50,8 +50,8 @@ import atexit
 import struct
 
 #ROS 未搭載マシンの場合は、下記の２行を#でコメントアウトしてください。
-#import rospy
-#from sensor_msgs.msg import JointState
+import rospy
+from sensor_msgs.msg import JointState
 
 #定数
 TITLE_VERSION="Meridian_Console_v20220506d" #DPGのウィンドウタイトル兼バージョン表示
