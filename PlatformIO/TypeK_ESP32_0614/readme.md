@@ -13,8 +13,8 @@
   
 ### 「ESP32DMASPI」の導入
 アリマーク→QUICK ACCESS→ PIO Home → Open → Libraries の検索窓で「ESP32DMASPI」  
-「ESP32DMASPI by Hideaki Tai」を選び、「Add to Project」  
-プロジェクトを選択し「Add」ボタンで導入。
+「ESP32DMASPI by Hideaki Tai」を選び、バージョンは0.1.2とする（※0.2.0では動かない）
+「Add to Project」でプロジェクトを選択し「Add」ボタンで導入。
   
 ### PS4リモコンの導入
 libのインポートなどにルールがあり、下記にまとめました。  
