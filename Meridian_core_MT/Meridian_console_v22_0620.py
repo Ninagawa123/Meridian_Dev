@@ -609,7 +609,9 @@ def main():
                         dpg.set_value("mpu"+str(i),idsensor*100)
 
             #リモコンデータの表示更新
-            dpg.set_value("pad_button", str(r_meridim[80]))
+            pad_button_short = np.array([0], dtype=np.uint16)
+            pad_button_short[0] = r_meridim[80]
+            dpg.set_value("pad_button", str(pad_button_short[0]))
             dpg.set_value("pad_Lx", r_meridim_char[163])
             dpg.set_value("pad_Ly", r_meridim_char[162])
             dpg.set_value("pad_Rx", r_meridim_char[165])
