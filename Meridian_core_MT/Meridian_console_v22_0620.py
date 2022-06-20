@@ -638,10 +638,10 @@ def main():
                 js_meridim = JointState()
                 js_meridim.header.stamp = rospy.Time.now()
                 js_meridim.name =\
-                    ['c_chest_yaw',                      'l_shoulder_pitch',                'l_shoulder_roll',                  'l_elbow_yaw',\
+                    ['c_head_yaw',                      'l_shoulder_pitch',                'l_shoulder_roll',                  'l_elbow_yaw',\
                         'l_elbow_pitch',                 'l_hipjoint_yaw',                  'l_hipjoint_roll',                  'l_hipjoint_pitch',\
                             'l_knee_pitch',              'l_ankle_pitch',                   'l_ankle_roll',                     \
-                                'c_head_yaw',            'r_shoulder_pitch',                'r_shoulder_roll',                  'r_elbow_yaw',\
+                                'c_chest_yaw',            'r_shoulder_pitch',                'r_shoulder_roll',                  'r_elbow_yaw',\
                                     'r_elbow_pitch',     'r_hipjoint_yaw',                  'r_hipjoint_roll',                  'r_hipjoint_pitch',\
                                         'r_knee_pitch',  'r_ankle_pitch',                   'r_ankle_roll']
                 js_meridim.position = \
