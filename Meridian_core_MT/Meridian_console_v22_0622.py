@@ -469,8 +469,8 @@ def callback(JointState):
     global s_meridim_js_sub
     global jspn
     for i in  range(11):
-        s_meridim_js_sub[21+i*2]=round(JointState.position[i]*10000)*jspn[i]
-        s_meridim_js_sub[51+i*2]=round(JointState.position[11+i]*10000)*jspn[15+i]
+        s_meridim_js_sub[21+i*2]=round(math.degrees(JointState.position[i])*100)*jspn[i]
+        s_meridim_js_sub[51+i*2]=round(math.degrees(JointState.position[11+i])*100)*jspn[15+i]
 
 ##################################################################################################################################################
 # dearpygui に よ る コ ン ソ ー ル 画 面 描 写 ##################################################################################################
