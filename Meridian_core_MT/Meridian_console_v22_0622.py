@@ -56,7 +56,7 @@ import rospy
 from sensor_msgs.msg import JointState
 
 #定数
-TITLE_VERSION="Meridian_Console_v22.0619" #DPGのウィンドウタイトル兼バージョン表示
+TITLE_VERSION="Meridian_Console_v22.0622" #DPGのウィンドウタイトル兼バージョン表示
 
 UDP_RESV_IP="192.168.1.xx" #このPCのIPアドレス
 UDP_RESV_PORT=22222 #受信ポート
