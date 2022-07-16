@@ -1,7 +1,7 @@
 ## PlatformIOへの導入方法
 
 ### PlatformIO でプロジェクトを作成する
-「Meridian_TypeK_ESP32_0614」とする。
+「Meridian_TypeK_ESP32_0716」とする。
 フレームワークはArduinoを選ぶ。
   
 ### ボードの選択
