@@ -8,12 +8,22 @@ ESP32 4096 bytes
 Teensy 1080 bytes　
 
 ■ データ形式(meridim配列)
+＜meridim配列１つ目＞
 index[0] 配列長さ(デフォルトは90)
 index[20] サーボL系ID0のデータ（0:搭載なし,+値:正転、-値:逆転）/ 数値にはサーボタイプが入る
           +1:KONDO KRS +2:KONDO RS485 +3:FUTABA TTL: +4 :FUTABARS485 
           +5:ROBOTIS TTL +6:ROBOTIS RS485 +7:JRPROPO +8:HiTECH +9:未定 +10:PWM
          (※+-1以外は未導入、サーボタイプはMeridian90のindex[20]の型番コードに準拠)
-index[21] 上記サーボタイプに応じたサーボ値のトリムデータを入れる
+index[21] サーボL系ID0の数値データ：上記サーボタイプに応じたサーボ値のトリムデータを入れる
+index[22]~ [20][21]と同様の組み合わせの繰り返し
+
+＜meridim配列２つ目＞
+index[0] 配列長さ(デフォルトは90)
+index[21] サーボL系ID0の数値データ：ジャイロ補正係数
+index[22]~ [20][21]と同様の組み合わせの繰り返し
+
+＜meridim配列３つ目＞
+未定
 
 ■ 上記データがソースコード上で反映される変数（TWINのTeensy、LITEのESP32）
 /* 各サーボのマウントありなし */
