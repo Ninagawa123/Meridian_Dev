@@ -38,6 +38,14 @@ int idr_trim[15]; // R系統
 
 これらをsetup()内で設定する。
 
+未定義だが、係数の変数名は下記を想定
+/* 各サーボのジャイロ補正用配列 */
+float idl_gyrofb[15]; // L系統 
+float idr_gyrofb[15]; // R系統
+/* 各サーボの傾き補正用配列 */
+float idl_tiltfb[15]; // L系統
+float idr_tiltfb[15]; // R系統
+
 ■ 書き込み、読み込みコマンド
 通常のmeridim90でのデータ通信時のデータとして
 meridim[0] = 10 で書き込み（できれば読み込みまで一連で組む）
