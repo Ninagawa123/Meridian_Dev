@@ -1,13 +1,14 @@
 
-// Meridian_TWIN_for_Teensy_20220906 By Izumi Ninagawa
+// Meridian_TWIN_for_Teensy_20220910 By Izumi Ninagawa
 // MIT Licenced.
-// Meridan TWIN Teensy4.0用スクリプト　20220906版
+// Meridan TWIN Teensy4.0用スクリプト　20220910版
 // 220723 内部計算時に degree*100 を単位として使用するように変更
 // 220723 センサーの関数を集約
 // 220723 サーボオン時にリモコン左十字キー入力で首を左右に振る動作サンプル入り
 // 220730 PCからのリモコン受信が有効となるように調整
 // 220906 センサの初期化整理, BNO055対応, 関数名変更[旧]setyaw()→[新]setyawcenter()
 // 220906 変数名変更[旧] YAW_ZERO→[新]yaw_center
+// 220910 SDcardの初期化＆テストを追加. SD_TEST 1 でランダム4桁の番号の書き込みと読み取りを実行 (LITE版と同じ動作)
 
 //================================================================================================================
 //---- Teensy4.0 の 配 線 / ピンアサイン ----------------------------------------------------------------------------
@@ -111,7 +112,7 @@
 //================================================================================================================
 
 /* 頻繁に変更するであろう#DEFINE */
-#define VERSION "Meridian_TWIN_for_Teensy_2022.09.06" // バージョン表示
+#define VERSION "Meridian_TWIN_for_Teensy_2022.09.10" // バージョン表示
 #define FRAME_DURATION 10                             // 1フレームあたりの単位時間（単位ms）
 
 /* シリアルモニタリング切り替え */
@@ -126,6 +127,7 @@
 #define JOYPAD_FRAME 4  // 上記JOYPADのデータを読みに行くフレーム間隔 (※KRC-5FHでは4推奨)
 #define ICS3_MOUNT 0    // 半二重サーボ信号の3系のありなし
 #define SD_MOUNT 1      // SDカードリーダーのありなし. MeridianBoard Type.Kは有り
+#define SD_TEST 1       // SDカードリーダーの起動時読み書きチェック.
 #define CHIPSELECT_SD 9 // SDカードSPI通信用のChipSelectのピン番号
 #define SERVO_NUM_L 11  // L系統につないだサーボの数
 #define SERVO_NUM_R 11  // R系統につないだサーボの数
@@ -144,7 +146,7 @@
 #define SERIAL_PC 6000000              // PCとのシリアル速度（モニタリング表示用）
 #define SPI_CLOCK 6000000              // SPI通信の速度（6000000kHz推奨）
 #define BAUDRATE 1250000               // ICSサーボの通信速度1.25M
-#define TIMEOUT 3                      // ICS返信待ちのタイムアウト時間。通信できてないか確認する場合には1000ぐらいに設定するとよい
+#define TIMEOUT 2                      // ICS返信待ちのタイムアウト時間。通信できてないか確認する場合には1000ぐらいに設定するとよい
 const int MSG_BUFF = MSG_SIZE * 2;     // Meridim配列の長さ（byte換算）
 const int MSG_ERR = MSG_SIZE - 2;      // エラーフラグの格納場所（配列の末尾から2つめ）
 const int MSG_ERR_u = MSG_ERR * 2 + 1; // エラーフラグの格納場所（上位8ビット）
@@ -215,6 +217,9 @@ short stick_Ly = 0;          // 受信ジョイスティックデータLy
 short stick_Rx = 0;          // 受信ジョイスティックデータRx
 short stick_Ry = 0;          // 受信ジョイスティックデータRy
 unsigned short pad_btn = 0;  // ボタン変数一般化変換
+
+// SDカードテスト用
+File sdFile;
 
 /* MPU6050のアドレス、レジスタ設定値 */
 #define I2C_CLOCK 400000 // I2Cの速度（400kHz推奨）
@@ -687,6 +692,84 @@ void joypad_read()
     }
 }
 
+// +----------------------------------------------------------------------
+// | 関数名　　:  sd_setup()
+// +----------------------------------------------------------------------
+// | 機能     :  SDカードの挿入と起動をチェックし、
+// | 　　　　　:  ランダムな4桁のコードの読み書きを行い動作チェックとする.
+// | 戻り値　　:  なし.
+// +----------------------------------------------------------------------
+void sd_setup()
+{
+    Serial.print("Checking SD card...");
+    delay(100);
+    if (!SD.begin(CHIPSELECT_SD))
+    {
+        Serial.println(" FALIED!");
+        delay(500);
+        // Serial.println("Retry.");
+        // return;
+    }
+    else
+    {
+        Serial.println(" OK.");
+    }
+
+    if (SD_TEST)
+    {
+        SD.remove("/test.txt");
+        // open the file.
+        sdFile = SD.open("/test.txt", FILE_WRITE);
+        delayMicroseconds(1); // SPI安定化検証用
+
+        // if the file opened okay, write to it:
+        if (sdFile)
+        {
+            Serial.print("SD card test...");
+            // sdFile.println("Meridian Board read write test.");
+            randomSeed(analogRead(2) * 10 + analogRead(3) * 2 + analogRead(4));
+            int randNumber = random(1000, 9999); // 0から299の乱数を生成
+            Serial.print(" Writing code ");
+            Serial.print(randNumber);
+            sdFile.println(randNumber);
+            delayMicroseconds(1); // SPI安定化検証用
+            // close the file:
+            sdFile.close();
+            Serial.print(" and");
+        }
+        else
+        {
+            // if the file didn't open, print an error:
+            Serial.println("... opening /test.txt FALIED!");
+        }
+        delayMicroseconds(1); // SPI安定化検証用
+        // re-open the file for reading:
+        sdFile = SD.open("/test.txt");
+
+        if (sdFile)
+        {
+            // Serial.println("SD opening file /test.txt...");
+
+            // read from the file until there's nothing else in it:
+            // Serial.println("SD reading texts in test.txt:");
+            Serial.print(" read code ");
+
+            while (sdFile.available())
+            {
+                Serial.write(sdFile.read());
+            }
+            // close the file:
+            sdFile.close();
+        }
+        else
+        {
+            // if the file didn't open, print an error:
+            Serial.println("... opening /test.txt FALIED!");
+        }
+        delay(100);
+    }
+}
+
 //================================================================================================================
 //---- セ ッ ト ア ッ プ -------------------------------------------------------------------------------------------
 //================================================================================================================
@@ -890,10 +973,19 @@ void setup()
     }
     delay(100);
 
+    /* SDカードの初期化 */
+
+    if (SD_MOUNT)
+    {
+        sd_setup();
+    }
+    else
+    {
+        Serial.println("No SD reader mounted.");
+    }
+
     /* SPI通信用DMAの設定 */
     TsyDMASPI0.begin(SS, SPISettings(SPI_CLOCK, MSBFIRST, SPI_MODE3));
-
-    /* SDカードの初期化 */
 
     /* 配列のリセット */
     memset(s_spi_meridim.bval, 0, MSG_BUFF + 4);     //配列要素を0でリセット
