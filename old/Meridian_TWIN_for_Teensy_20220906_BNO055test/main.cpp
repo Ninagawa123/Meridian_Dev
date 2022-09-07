@@ -242,6 +242,7 @@ long temperature;                                                       // セ�
 /* BNO055用変数 */
 //#define IMUAHRS_POLLING 10 // IMU,AHRSの問い合わせフレーム間隔
 Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
+double qw, qx, qy, qz; // クオータニオン計算用
 
 /* ICSサーボのインスタンス設定 */
 IcsHardSerialClass krs_L(&Serial2, EN_L_PIN, BAUDRATE, TIMEOUT);
@@ -578,17 +579,50 @@ void IMUAHRS_getYawPitchRoll()
 
         // センサフュージョンによる方向推定値の取得と表示 - VECTOR_EULER - degrees
         imu::Vector<3> euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
-        mpu_read[12] = euler.y();                    // DMP_ROLL推定値
-        mpu_read[13] = euler.z();                    // DMP_PITCH推定値
-        mpu_read[14] = euler.x() - yaw_center - 180; // DMP_YAW推定値
+        // mpu_read[12] = euler.y(); // DMP_ROLL推定値
+        mpu_read[13] = euler.z(); // DMP_PITCH推定値
+        // mpu_read[14] = euler.x() - yaw_center - 180; // DMP_YAW推定値
 
+        // センサフュージョンの方向推定値のクオータニオン
+        imu::Quaternion quat = bno.getQuat();
+        qw = quat.w(); // / 16384;
+        qx = quat.x(); // / 16384;
+        qy = quat.y(); // / 16384;
+        qx = quat.z(); // / 16384;
+
+        double ysqr = qy * qy;
+
+        // roll (x-axis rotation)
+        double t2 = +2.0 * (qw * qy - qz * qx);
+        t2 = t2 > 1.0 ? 1.0 : t2;
+        t2 = t2 < -1.0 ? -1.0 : t2;
+        mpu_read[12] = -asin(t2) * 57.2957795131;
+
+        // pitch (y-axis rotation)
+        // double t3 = +2.0 * (qw * qz + qx * qy);
+        // double t4 = +1.0 - 2.0 * (ysqr + qz * qz);
+        // mpu_read[13] = atan2(t3, t4) * 57.2957795131;
+
+        // yaw (z-axis rotation)
+        double t0 = +2.0 * (qw * qx + qy * qz);
+        double t1 = +1.0 - 2.0 * (qx * qx + ysqr);
+        mpu_read[14] = -atan2(t0, t1) * 57.2957795131 - yaw_center;
+
+        // 調整用数値モニタリング;
         /*
-          // センサフュージョンの方向推定値のクオータニオン
-          imu::Quaternion quat = bno.getQuat();
-          Serial.print("qW: "); Serial.print(quat.w(), 4);
-          Serial.print(" qX: "); Serial.print(quat.x(), 4);
-          Serial.print(" qY: "); Serial.print(quat.y(), 4);
-          Serial.print(" qZ: "); Serial.println(quat.z(), 4);
+        Serial.print(qx);
+        Serial.print(", ");
+        Serial.print(qy);
+        Serial.print(", ");
+        Serial.print(qz);
+        Serial.print(", ");
+        Serial.print(qw);
+        Serial.print(", ");
+        Serial.print(mpu_read[12]);
+        Serial.print(", ");
+        Serial.print(mpu_read[13]);
+        Serial.print(", ");
+        Serial.println(mpu_read[14]);
         */
 
         /*
@@ -600,7 +634,7 @@ void IMUAHRS_getYawPitchRoll()
         Serial.print(", Ac"); Serial.print(accel, DEC);
         Serial.print(", Mg"); Serial.println(mag, DEC);
         */
-        // threads.delay(IMUAHRS_POLLING); //あとで消す
+
         if (flag_sensor_IMUAHRS_writable)
         {
             memcpy(mpu_result, mpu_read, sizeof(float) * 16);
@@ -658,6 +692,9 @@ void joypad_read()
 //================================================================================================================
 void setup()
 {
+    pinMode(18, INPUT_PULLUP); // SDA
+    // pinMode(19, INPUT_PULLUP); // SCL
+
     //-------------------------------------------------------------------------
     //---- サ ー ボ 設 定  -----------------------------------------------------
     //-------------------------------------------------------------------------
@@ -892,6 +929,7 @@ void setup()
         }
         // センサー用スレッド
         delay(10);
+
         MsTimer2::set(IMUAHRS_FREQ, IMUAHRS_getYawPitchRoll); // AHRSの情報を取得 IMUAHRS_FREQ msごとにチェック
         MsTimer2::start();
     }
@@ -1254,4 +1292,5 @@ void loop()
     {
         frame_count = 0;
     }
+    // Serial.println(mpu_result[14]);
 }
