@@ -1284,17 +1284,16 @@ void loop()
     //////// < 3 > 積 み 残 し 処 理  ////////////////////////////////////////////////////
     // → 積み残しがあればここで処理
 
-  
-   //////// < 3.5 > S P I 送 信 の タ イ ミ ン グ を 外 部 に 依 存 す る「待 受 モ ー ド 」の 処 理 ///
+    //////// < 3.5 > S P I 送 信 の タ イ ミ ン グ を 外 部 に 依 存 す る「待 受 モ ー ド 」の 処 理 ///
 
     // if ((flag_spi_initiative_outer == false) or (r_spi_meridim_last_cksm != r_spi_meridim.sval[MSG_SIZE - 1])) // チェックサムを比較
     if ((flag_spi_initiative_outer == false) or (frame_sync_r_resv != frame_sync_r_last)) //★★★ シーケンシャルカウンタを比較
-    { // SPI送信のタイミングを外部に依存する「待受モード」の場合, 新しいデータが来るまで以下の処理を飛ばして待受する.
+    {                                                                                     // SPI送信のタイミングを外部に依存する「待受モード」の場合, 新しいデータが来るまで以下の処理を飛ばして待受する.
         // シーケンシャルカウンタと待受フラグのモニタリング(カウンタが同じ場合)
-        Serial.println(frame_sync_r_last); //前回のカウンタ
-        Serial.println(frame_sync_r_resv); //今回のカウンタ
-        Serial.println(flag_spi_initiative_outer);//待受モードのフラグ状態
-        Serial.println("***** accepted"); //データ処理の作業の採用通知
+        Serial.println(frame_sync_r_last);         //前回のカウンタ
+        Serial.println(frame_sync_r_resv);         //今回のカウンタ
+        Serial.println(flag_spi_initiative_outer); //待受モードのフラグ状態
+        Serial.println("***** accepted");          //データ処理の作業の採用通知
         //////// < 4 > 受 信 S P I デ ー タ を 送 信 S P I デ ー タ に 転 記 ////////////////////
         memcpy(s_spi_meridim.bval, r_spi_meridim.bval, MSG_BUFF + 4);
 
@@ -1497,45 +1496,49 @@ void loop()
 
         //////// < 11 > フ レ ー ム 終 端 処 理 ///////////////////////////////////////////////
 
-        // @[11-1] この時点で１フレーム内に処理が収まっていない時の処理
-        curr = (long)millis(); // 現在時刻を更新
-        if (curr > merc)
-        {                              // 現在時刻がフレーム管理時計を超えていたらアラートを出す
-            Serial.print("* delay: "); //シリアルに遅延msを表示
-            Serial.println(curr - merc);
-            digitalWrite(ERR_LED, HIGH); // 処理落ちが発生していたらLEDを点灯
-        }
-        else
+        if (flag_spi_initiative_outer == false) // SPI待受モード時は消化タイムを無視してベストエフォート★★★
         {
-            digitalWrite(ERR_LED, LOW); // 処理が収まっていればLEDを消灯
-        }
+            // @[11-1] この時点で１フレーム内に処理が収まっていない時の処理
+            curr = (long)millis(); // 現在時刻を更新
+            if (curr > merc)
+            {                              // 現在時刻がフレーム管理時計を超えていたらアラートを出す
+                Serial.print("* delay: "); //シリアルに遅延msを表示
+                Serial.println(curr - merc);
+                digitalWrite(ERR_LED, HIGH); // 処理落ちが発生していたらLEDを点灯
+            }
+            else
+            {
+                digitalWrite(ERR_LED, LOW); // 処理が収まっていればLEDを消灯
+            }
 
-        // @[11-2] この時点で時間が余っていたら時間消化。時間がオーバーしていたらこの処理を自然と飛ばす。
-        curr = (long)millis();
-        curr_micro = (long)micros(); // 現在時刻を取得
-        // Serial.println(merc * 1000 - curr_micro); // 詳細な残り時間をμ秒単位でシリアル表示
-        while (curr < merc)
-        {
+            // @[11-2] この時点で時間が余っていたら時間消化。時間がオーバーしていたらこの処理を自然と飛ばす。
             curr = (long)millis();
+            curr_micro = (long)micros(); // 現在時刻を取得
+            // Serial.println(merc * 1000 - curr_micro); // 詳細な残り時間をμ秒単位でシリアル表示
+            while (curr < merc)
+            {
+                curr = (long)millis();
+            }
+
+            // @[11-3]フレーム管理時計mercのカウントアップ
+            merc = merc + frame_ms;                       // フレーム管理時計を1フレーム分進める
+            frame_count = frame_count + frame_count_diff; // サインカーブ等動作用のフレームカウントアップ
+            if (frame_count > frame_count_max)            // カウンターが最大値ならゼロリセット
+            {
+                frame_count = 0;
+            }
         }
 
-        // @[11-3]フレーム管理時計mercのカウントアップ
-        merc = merc + frame_ms;                       // フレーム管理時計を1フレーム分進める
-        frame_count = frame_count + frame_count_diff; // サインカーブ等動作用のフレームカウントアップ
-        if (frame_count > frame_count_max)            // カウンターが最大値ならゼロリセット
-        {
-            frame_count = 0;
-        }
-        r_spi_meridim_last_cksm = r_spi_meridim.sval[MSG_SIZE - 1]; //前回のチェックサムをキープ ★★★
-        frame_sync_r_last = frame_sync_r_resv;                      //前回受信したシーケンシャル番号をキープ ★★★
+        r_spi_meridim_last_cksm = r_spi_meridim.sval[MSG_SIZE - 1]; //前回のチェックサムをキープ
+        frame_sync_r_last = frame_sync_r_resv;                      //前回受信したシーケンシャル番号をキープ
     }
     else
     {
-        // シーケンシャルカウンタと待受フラグのモニタリング(カウンタが同じ場合) ★★★
-        Serial.println(frame_sync_r_last); //前回のカウンタ
-        Serial.println(frame_sync_r_resv); //今回のカウンタ
-        Serial.println(flag_spi_initiative_outer);//待受モードのフラグ状態
-        Serial.println("----- cancelled"); //データ処理の作業のキャンセル通知
-        delay(1); // SPI送信のタイミングを外部に依存する「待受モード」の場合、ループ中に1ms挟む.
+        // シーケンシャルカウンタと待受フラグのモニタリング(カウンタが同じ場合)
+        Serial.println(frame_sync_r_last);         //前回のカウンタ
+        Serial.println(frame_sync_r_resv);         //今回のカウンタ
+        Serial.println(flag_spi_initiative_outer); //待受モードのフラグ状態
+        Serial.println("----- cancelled");         //データ処理の作業のキャンセル通知
+        delay(1);                                  // SPI送信のタイミングを外部に依存する「待受モード」の場合、ループ中に1ms挟む.
     }
 }
