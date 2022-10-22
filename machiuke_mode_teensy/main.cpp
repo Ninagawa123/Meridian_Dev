@@ -1526,12 +1526,12 @@ void loop()
         {
             frame_count = 0;
         }
-        r_spi_meridim_last_cksm = r_spi_meridim.sval[MSG_SIZE - 1]; //前回のチェックサムをキープ
-        frame_sync_r_last = frame_sync_r_resv;                      //前回受信したシーケンシャル番号をキープ
+        r_spi_meridim_last_cksm = r_spi_meridim.sval[MSG_SIZE - 1]; //前回のチェックサムをキープ ★★★
+        frame_sync_r_last = frame_sync_r_resv;                      //前回受信したシーケンシャル番号をキープ ★★★
     }
     else
     {
-        // シーケンシャルカウンタと待受フラグのモニタリング(カウンタが同じ場合)
+        // シーケンシャルカウンタと待受フラグのモニタリング(カウンタが同じ場合) ★★★
         Serial.println(frame_sync_r_last); //前回のカウンタ
         Serial.println(frame_sync_r_resv); //今回のカウンタ
         Serial.println(flag_spi_initiative_outer);//待受モードのフラグ状態
