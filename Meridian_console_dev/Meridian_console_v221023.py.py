@@ -32,6 +32,9 @@
 # Button Input画面
 # コンソールからリモコンボタン押下情報を送信します
 
+# 開発テスト
+# Mini Terminalからインデックス値とコマンド値を送信できます。いちどに8組まで値を設定できます。
+
 from ast import Pass
 import numpy as np
 import socket
