@@ -1,4 +1,4 @@
-// Meridian_TWIN_for_ESP32_20221023 By Izumi Ninagawa & Meridian Project
+// Meridian_TWIN_for_ESP32_20221023 AMバージョン By Izumi Ninagawa & Meridian Project
 // MIT Licenced.
 //
 // Meridan TWIN ESP32用スケッチ　20221023版
