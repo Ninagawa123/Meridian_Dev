@@ -20,7 +20,7 @@ def calculate_box_inertia_with_offset(m, w, d, h, dx, dy, dz):
     ixz = 0.0 if abs(ixz) < 1e-10 else ixz
     iyz = 0.0 if abs(iyz) < 1e-10 else iyz
 
-    print(f'BOX ixx="{Iw:.5f}" iyy="{Id:.5f}" izz="{Ih:.5f}" ixy="{ixy:.5f}" ixz="{ixz:.5f}" iyz="{iyz:.5f}"')
+    print(f'<inertia ixx="{Iw:.5f}" iyy="{Id:.5f}" izz="{Ih:.5f}" ixy="{ixy:.5f}" ixz="{ixz:.5f}" iyz="{iyz:.5f}" />')
 
 # 数値入力を取得する関数
 def get_float_input(prompt):
