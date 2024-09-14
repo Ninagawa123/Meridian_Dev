@@ -10,6 +10,11 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import QTimer, Qt
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 
+#python Version: 3.11
+#numpy Version: 2.1.1
+#PyQt6 Version: 6.7.1
+#pvtk　Version: 9.3.1
+
 class CustomInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
     def __init__(self, parent=None):
         super(CustomInteractorStyle, self).__init__()
