@@ -1,5 +1,7 @@
 # STL Reorienter  
 STLの軸や中心を再設定できるpythonです。  
+
+<img width="400" src="https://github.com/user-attachments/assets/0732bd7a-2c48-4147-bbb5-7af2c1a22864">
   
 ## 機能  
 ・読み込んだSTLファイルのオブジェクトを0,0,0を原点として表示する。  
