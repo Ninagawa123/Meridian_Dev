@@ -3,17 +3,17 @@ import signal
 import vtk
 import numpy as np
 
-from PyQt6.QtWidgets import (
-    QApplication, QFileDialog, QMainWindow, QVBoxLayout, QWidget, 
+from PyQt5.QtWidgets import (
+    QApplication, QFileDialog, QMainWindow, QVBoxLayout, QWidget,
     QPushButton, QHBoxLayout, QCheckBox, QLineEdit, QLabel, QGridLayout
 )
-from PyQt6.QtCore import QTimer, Qt
+from PyQt5.QtCore import QTimer, Qt
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 
-#python Version: 3.11
-#numpy Version: 2.1.1
-#PyQt6 Version: 6.7.1
-#pvtk　Version: 9.3.1
+# python Version: 3.11
+# numpy Version: 2.1.1
+# PyQt5 Version: 5.15.11
+# pvtk　Version: 9.3.1
 
 class CustomInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
     def __init__(self, parent=None):
@@ -21,7 +21,7 @@ class CustomInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
         self.parent = parent
         self.AddObserver("CharEvent", self.on_char_event)
         self.AddObserver("KeyPressEvent", self.on_key_press)
-                
+
     def on_char_event(self, obj, event):
         key = self.GetInteractor().GetKeySym()
         if key == "f":
@@ -59,18 +59,18 @@ class CustomInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
                 self.parent.rotate_camera(-90, 'roll')
         else:
             self.OnChar()
-            
+
     def on_key_press(self, obj, event):
         key = self.GetInteractor().GetKeySym()
         shift_pressed = self.GetInteractor().GetShiftKey()
         ctrl_pressed = self.GetInteractor().GetControlKey()
-        
+
         step = 0.01  # デフォルトのステップ (10mm)
         if shift_pressed and ctrl_pressed:
             step = 0.0001  # 0.1mm
         elif shift_pressed:
             step = 0.001  # 1mm
-        
+
         if self.parent:
             horizontal_axis, vertical_axis, screen_right, screen_up = self.parent.get_screen_axes()
             for i, checkbox in enumerate(self.parent.point_checkboxes):
@@ -83,9 +83,9 @@ class CustomInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
                         self.parent.move_point_screen(i, screen_right, -step)
                     elif key == "Right":
                         self.parent.move_point_screen(i, screen_right, step)
-        
+
         self.OnKeyPress()
-        
+
     def toggle_wireframe(self):
         if not self.GetInteractor():
             return
@@ -104,6 +104,7 @@ class CustomInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
             actor = actors.GetNextItem()
         self.GetInteractor().GetRenderWindow().Render()
 
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -116,7 +117,8 @@ class MainWindow(QMainWindow):
         self.initial_camera_view_up = [0, 0, 1]  # 初期の上方向
 
         self.num_points = 1  # ポイントの数を8に設定
-        self.point_coords = [list(self.absolute_origin) for _ in range(self.num_points)]
+        self.point_coords = [list(self.absolute_origin)
+                             for _ in range(self.num_points)]
         self.point_actors = [None] * self.num_points
         self.point_checkboxes = []
         self.point_inputs = []
@@ -127,7 +129,7 @@ class MainWindow(QMainWindow):
         main_layout = QVBoxLayout(central_widget)
 
         self.set_ui_style()
-    
+
         # ファイル名表示用のラベル
         self.file_name_label = QLabel("File: No file loaded")
         main_layout.addWidget(self.file_name_label)
@@ -143,7 +145,7 @@ class MainWindow(QMainWindow):
         button_layout.addWidget(self.export_stl_button)
 
         main_layout.addLayout(button_layout)
-        
+
         # STL表示画面
         self.vtk_widget = QVTKRenderWindowInteractor(central_widget)
         main_layout.addWidget(self.vtk_widget)
@@ -177,13 +179,14 @@ class MainWindow(QMainWindow):
 
         for i in range(self.num_points):
             self.show_point(i)
-        
+
         self.add_instruction_text()
-        
+
         self.render_window.Render()
         self.render_window_interactor.Initialize()
 
-        self.vtk_widget.GetRenderWindow().AddObserver("ModifiedEvent", self.update_all_points_size)
+        self.vtk_widget.GetRenderWindow().AddObserver(
+            "ModifiedEvent", self.update_all_points_size)
 
     def set_ui_style(self):
         self.setStyleSheet("""
@@ -235,14 +238,15 @@ class MainWindow(QMainWindow):
                 background-color: #4a90e2;
             }
         """)
-    
+
     def setup_points_ui(self, layout):
         points_layout = QGridLayout()
 
         for i in range(self.num_points):
             checkbox = QCheckBox(f"Point {i+1}")
             checkbox.setChecked(True)
-            checkbox.stateChanged.connect(lambda state, index=i: self.toggle_point(state, index))
+            checkbox.stateChanged.connect(
+                lambda state, index=i: self.toggle_point(state, index))
             self.point_checkboxes.append(checkbox)
             points_layout.addWidget(checkbox, i, 0)
 
@@ -274,15 +278,16 @@ class MainWindow(QMainWindow):
             y = float(self.point_inputs[index][1].text())
             z = float(self.point_inputs[index][2].text())
             self.point_coords[index] = [x, y, z]
-            
+
             if self.point_checkboxes[index].isChecked():
                 self.show_point(index)
             else:
                 self.update_point_display(index)
-            
+
             print(f"Point {index+1} set to: ({x}, {y}, {z})")
         except ValueError:
-            print(f"Invalid input for Point {index+1}. Please enter valid numbers for coordinates.")
+            print(
+                f"Invalid input for Point {index+1}. Please enter valid numbers for coordinates.")
 
     def setup_vtk(self):
         self.renderer = vtk.vtkRenderer()
@@ -298,7 +303,8 @@ class MainWindow(QMainWindow):
     def setup_camera(self):
         camera = self.renderer.GetActiveCamera()
         camera.SetPosition(self.absolute_origin[0] + self.initial_camera_position[0],
-                           self.absolute_origin[1] + self.initial_camera_position[1],
+                           self.absolute_origin[1] +
+                           self.initial_camera_position[1],
                            self.absolute_origin[2] + self.initial_camera_position[2])
         camera.SetFocalPoint(*self.absolute_origin)
         camera.SetViewUp(*self.initial_camera_view_up)
@@ -323,14 +329,15 @@ class MainWindow(QMainWindow):
     def reset_camera(self):
         camera = self.renderer.GetActiveCamera()
         camera.SetPosition(self.absolute_origin[0] + self.initial_camera_position[0],
-                           self.absolute_origin[1] + self.initial_camera_position[1],
+                           self.absolute_origin[1] +
+                           self.initial_camera_position[1],
                            self.absolute_origin[2] + self.initial_camera_position[2])
         camera.SetFocalPoint(*self.absolute_origin)
         camera.SetViewUp(*self.initial_camera_view_up)
-        
+
         self.camera_rotation = [0, 0, 0]
         self.current_rotation = 0
-        
+
         self.renderer.ResetCameraClippingRange()
         self.render_window.Render()
         self.update_all_points()
@@ -358,13 +365,14 @@ class MainWindow(QMainWindow):
         self.point_coords[index] = [new_pos[0], new_pos[1], current_z]
         self.update_point_display(index)
 
-        print(f"Point {index+1} moved to: ({new_pos[0]:.4f}, {new_pos[1]:.4f}, {current_z:.4f})")
+        print(
+            f"Point {index+1} moved to: ({new_pos[0]:.4f}, {new_pos[1]:.4f}, {current_z:.4f})")
 
     def update_point_display(self, index):
         # 入力フィールドに座標を反映
         if self.point_actors[index]:
             self.point_actors[index].SetPosition(self.point_coords[index])
-        
+
         # インプットフィールドを更新
         for j, coord in enumerate(self.point_coords[index]):
             self.point_inputs[index][j].setText(f"{coord:.4f}")
@@ -418,8 +426,10 @@ class MainWindow(QMainWindow):
             if actor:
                 self.renderer.RemoveActor(actor)
                 self.point_actors[index] = vtk.vtkAssembly()
-                self.create_point_coordinate(self.point_actors[index], [0, 0, 0])  # ローカル座標系で作成
-                self.point_actors[index].SetPosition(self.point_coords[index])  # 世界座標系で位置を設定
+                self.create_point_coordinate(self.point_actors[index], [
+                                             0, 0, 0])  # ローカル座標系で作成
+                self.point_actors[index].SetPosition(
+                    self.point_coords[index])  # 世界座標系で位置を設定
                 self.renderer.AddActor(self.point_actors[index])
         self.render_window.Render()
 
@@ -460,7 +470,8 @@ class MainWindow(QMainWindow):
                 actor.GetProperty().SetLineWidth(2)
 
                 assembly.AddPart(actor)
-                print(f"Added {['X', 'Y', 'Z'][i]} axis {'positive' if direction == 1 else 'negative'}")
+                print(
+                    f"Added {['X', 'Y', 'Z'][i]} axis {'positive' if direction == 1 else 'negative'}")
 
         # XY, XZ, YZ平面の円を作成
         for i in range(3):
@@ -483,7 +494,7 @@ class MainWindow(QMainWindow):
 
             actor = vtk.vtkActor()
             actor.SetMapper(mapper)
-            
+
             # 円のプロパティを設定
             actor.GetProperty().SetColor(1, 0, 1)  # 紫色
             actor.GetProperty().SetRepresentationToWireframe()  # 常にワイヤーフレーム表示
@@ -502,46 +513,48 @@ class MainWindow(QMainWindow):
     def calculate_sphere_radius(self):
         camera = self.renderer.GetActiveCamera()
         parallel_scale = camera.GetParallelScale()
-        
+
         # ビューポートのアスペクト比を取得
         viewport = self.renderer.GetViewport()
-        aspect_ratio = (viewport[2] - viewport[0]) / (viewport[3] - viewport[1])
-        
+        aspect_ratio = (viewport[2] - viewport[0]) / \
+            (viewport[3] - viewport[1])
+
         # 画角の10%のサイズを計算（画角の高さの5%を半径とする）
         radius = parallel_scale * 0.05
-        
+
         # アスペクト比を考慮して、幅と高さの小さい方に合わせる
         if aspect_ratio > 1:
             radius /= aspect_ratio
-        
+
         return radius
 
     def calculate_properties(self):
         try:
             volume = float(self.volume_label.text().split(': ')[1])
-            
+
             # 密度はデフォルト値を使用するか、ユーザー入力を受け付けるUIを追加する必要があります
             density = 1.0  # デフォルト値、必要に応じて変更してください
-            
+
             mass = volume * density
-            
+
             # 慣性モーメントの計算（簡略化：立方体と仮定）
             side_length = np.cbrt(volume)
             inertia = (1/6) * mass * side_length**2
-            
+
             print(f"Volume: {volume:.6f} m^3")
             print(f"Density: {density:.6f} kg/m^3")
             print(f"Mass: {mass:.6f} kg")
             print(f"Inertia: {inertia:.6f} kg·m^2")
-            
+
         except ValueError:
-            print("Error calculating properties. Please ensure the volume is a valid number.")
-            
+            print(
+                "Error calculating properties. Please ensure the volume is a valid number.")
+
     def apply_camera_rotation(self, camera):
         # カメラの現在の位置と焦点を取得
         position = list(camera.GetPosition())
         focal_point = self.absolute_origin
-        
+
         # 回転行列を作成
         transform = vtk.vtkTransform()
         transform.PostMultiply()
@@ -550,11 +563,11 @@ class MainWindow(QMainWindow):
         transform.RotateX(self.camera_rotation[0])  # Pitch
         transform.RotateY(self.camera_rotation[1])  # Yaw
         transform.Translate(*[-x for x in focal_point])
-        
+
         # カメラの位置を回転
         new_position = transform.TransformPoint(position)
         camera.SetPosition(new_position)
-        
+
         # カメラの上方向を更新
         up = [0, 0, 1]
         new_up = transform.TransformVector(up)
@@ -589,13 +602,13 @@ class MainWindow(QMainWindow):
         # 左上のテキスト
         text_actor_top = vtk.vtkTextActor()
         text_actor_top.SetInput(
-        "[W/S]: Up/Down Rotate\n"
-        "[A/D]: Left/Right Rotate\n"
-        "[Q/E]: Roll\n"
-        "[R]: Reset Camera\n"
-        "[T]: Wireframe\n\n"
-        "[Drag]: Rotate\n"
-        "[Shift + Drag]: Move View\n"
+            "[W/S]: Up/Down Rotate\n"
+            "[A/D]: Left/Right Rotate\n"
+            "[Q/E]: Roll\n"
+            "[R]: Reset Camera\n"
+            "[T]: Wireframe\n\n"
+            "[Drag]: Rotate\n"
+            "[Shift + Drag]: Move View\n"
         )
         text_actor_top.GetTextProperty().SetFontSize(14)
         text_actor_top.GetTextProperty().SetColor(0.0, 0.8, 0.8)
@@ -621,16 +634,16 @@ class MainWindow(QMainWindow):
         text_actor_bottom.GetTextProperty().SetJustificationToLeft()
         text_actor_bottom.GetTextProperty().SetVerticalJustificationToBottom()
         self.renderer.AddActor(text_actor_bottom)
-        
-    
+
     def load_stl_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Open STL File", "", "STL Files (*.stl)")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Open STL File", "", "STL Files (*.stl)")
         if file_path:
             self.file_name_label.setText(f"File: {file_path}")
             self.show_stl(file_path)
         self.reset_camera()
         self.update_all_points_size()
-    
+
     def show_stl(self, file_path):
         if hasattr(self, 'stl_actor') and self.stl_actor:
             self.renderer.RemoveActor(self.stl_actor)
@@ -646,15 +659,15 @@ class MainWindow(QMainWindow):
 
         self.model_bounds = reader.GetOutput().GetBounds()
         self.renderer.AddActor(self.stl_actor)
-        
+
         # STLの体積を取得
         mass_properties = vtk.vtkMassProperties()
         mass_properties.SetInputConnection(reader.GetOutputPort())
         volume = mass_properties.GetVolume()
-        
+
         # 体積をUIに反映（小数点以下6桁）
         self.volume_label.setText(f"Volume (m^3): {volume:.6f}")
-                        
+
         # カメラのフィッティングと描画更新
         self.fit_camera_to_model()
         self.update_all_points()
@@ -667,9 +680,9 @@ class MainWindow(QMainWindow):
 
         # ファイル名をフルパスで更新
         self.file_name_label.setText(f"File: {file_path}")
-        
+
         self.render_window.Render()
-    
+
     def show_absolute_origin(self):
         # 大原点を表す球を作成
         sphere = vtk.vtkSphereSource()
@@ -686,11 +699,12 @@ class MainWindow(QMainWindow):
 
         self.renderer.AddActor(actor)
         self.render_window.Render()
-    
+
     def show_point(self, index):
         if self.point_actors[index] is None:
             self.point_actors[index] = vtk.vtkAssembly()
-            self.create_point_coordinate(self.point_actors[index], self.point_coords[index])
+            self.create_point_coordinate(
+                self.point_actors[index], self.point_coords[index])
             self.renderer.AddActor(self.point_actors[index])
         self.point_actors[index].VisibilityOn()
         self.update_point_display(index)
@@ -784,7 +798,8 @@ class MainWindow(QMainWindow):
 
             print(f"Point {index+1} set to: ({x}, {y}, {z})")
         except ValueError:
-            print(f"Invalid input for Point {index+1}. Please enter valid numbers for coordinates.")
+            print(
+                f"Invalid input for Point {index+1}. Please enter valid numbers for coordinates.")
 
     def move_point(self, index, dx, dy, dz):
         new_position = [
@@ -794,7 +809,8 @@ class MainWindow(QMainWindow):
         ]
         self.point_coords[index] = new_position
         self.update_point_display(index)
-        print(f"Point {index+1} moved to: ({new_position[0]:.4f}, {new_position[1]:.4f}, {new_position[2]:.4f})")
+        print(
+            f"Point {index+1} moved to: ({new_position[0]:.4f}, {new_position[1]:.4f}, {new_position[2]:.4f})")
 
     def move_point_screen(self, index, direction, step):
         move_vector = direction * step
@@ -805,8 +821,9 @@ class MainWindow(QMainWindow):
         ]
         self.point_coords[index] = new_position
         self.update_point_display(index)
-        print(f"Point {index+1} moved to: ({new_position[0]:.4f}, {new_position[1]:.4f}, {new_position[2]:.4f})")
-        
+        print(
+            f"Point {index+1} moved to: ({new_position[0]:.4f}, {new_position[1]:.4f}, {new_position[2]:.4f})")
+
     def update_all_points(self):
         for i in range(self.num_points):
             if self.point_actors[i]:
@@ -817,10 +834,11 @@ class MainWindow(QMainWindow):
             return
 
         camera = self.renderer.GetActiveCamera()
-        
+
         # モデルの中心を計算
-        center = [(self.model_bounds[i] + self.model_bounds[i+1]) / 2 for i in range(0, 6, 2)]
-        
+        center = [(self.model_bounds[i] + self.model_bounds[i+1]) /
+                  2 for i in range(0, 6, 2)]
+
         # モデルの大きさを計算
         size = max([
             self.model_bounds[1] - self.model_bounds[0],
@@ -838,7 +856,8 @@ class MainWindow(QMainWindow):
 
         # ビューポートのアスペクト比を取得
         viewport = self.renderer.GetViewport()
-        aspect_ratio = (viewport[2] - viewport[0]) / (viewport[3] - viewport[1])
+        aspect_ratio = (viewport[2] - viewport[0]) / \
+            (viewport[3] - viewport[1])
 
         # モデルが画面にフィットするようにパラレルスケールを設定
         if aspect_ratio > 1:  # 横長の画面
@@ -848,10 +867,10 @@ class MainWindow(QMainWindow):
 
         self.renderer.ResetCameraClippingRange()
         self.render_window.Render()
-        
+
     def on_mouse_wheel(self, obj, event):
         self.update_point1_size()
-        
+
     def handle_close(self, event):
         print("Window is closing...")
         self.vtk_widget.GetRenderWindow().Finalize()
@@ -862,29 +881,32 @@ class MainWindow(QMainWindow):
         camera = self.renderer.GetActiveCamera()
         view_up = np.array(camera.GetViewUp())
         forward = np.array(camera.GetDirectionOfProjection())
-        
+
         # NumPyのベクトル演算を使用
         right = np.cross(forward, view_up)
-        
+
         screen_right = right
         screen_up = view_up
 
         # ドット積の計算にNumPyを使用
         if abs(np.dot(screen_right, [1, 0, 0])) > abs(np.dot(screen_right, [0, 0, 1])):
             horizontal_axis = 'x'
-            vertical_axis = 'z' if abs(np.dot(screen_up, [0, 0, 1])) > abs(np.dot(screen_up, [0, 1, 0])) else 'y'
+            vertical_axis = 'z' if abs(np.dot(screen_up, [0, 0, 1])) > abs(
+                np.dot(screen_up, [0, 1, 0])) else 'y'
         else:
             horizontal_axis = 'z'
             vertical_axis = 'y'
 
         return horizontal_axis, vertical_axis, screen_right, screen_up
 
+
     def export_stl_with_new_origin(self):
         if not self.stl_actor or not any(self.point_actors):
             print("STLモデルまたはポイントが設定されていません。")
             return
 
-        file_path, _ = QFileDialog.getSaveFileName(self, "Save STL File", "", "STL Files (*.stl)")
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Save STL File", "", "STL Files (*.stl)")
         if not file_path:
             return
 
@@ -893,25 +915,33 @@ class MainWindow(QMainWindow):
             poly_data = self.stl_actor.GetMapper().GetInput()
 
             # 最初に選択されているポイントを新しい原点として使用
-            origin_index = next(i for i, actor in enumerate(self.point_actors) if actor and actor.GetVisibility())
+            origin_index = next(i for i, actor in enumerate(
+                self.point_actors) if actor and actor.GetVisibility())
             origin_point = self.point_coords[origin_index]
 
             # Step 1: 選択されたポイントを原点とする平行移動
             translation = vtk.vtkTransform()
-            translation.Translate(-origin_point[0], -origin_point[1], -origin_point[2])
+            translation.Translate(-origin_point[0], -
+                                origin_point[1], -origin_point[2])
 
-            # Step 2: 軸の変更のための回転行列を計算
+            # Step 2: 画面の向きに基づいた新しい座標系を作成
             camera = self.renderer.GetActiveCamera()
-            camera_direction = np.array(camera.GetDirectionOfProjection())
-            camera_up = np.array(camera.GetViewUp())
-            camera_right = np.cross(camera_direction, camera_up)
 
-            new_x = -camera_direction  # 前方向をX軸の正方向に
-            new_y = camera_right       # 右方向をY軸の正方向に
-            new_z = camera_up          # 上方向をZ軸の正方向に
+            # 画面手前方向（X軸正方向）
+            new_x = np.array(camera.GetDirectionOfProjection())
+            new_x = -new_x / np.linalg.norm(new_x)
 
+            # 画面上方向（Z軸正方向）
+            new_z = np.array(camera.GetViewUp())
+            new_z = new_z / np.linalg.norm(new_z)
+
+            # 画面右方向（Y軸正方向）
+            new_y = np.cross(new_z, new_x)
+            new_y = new_y / np.linalg.norm(new_y)
+
+            # 新しい座標系の回転行列を作成
             rotation_matrix = np.column_stack((new_x, new_y, new_z))
-            
+
             # VTKの回転行列に変換
             vtk_matrix = vtk.vtkMatrix4x4()
             for i in range(3):
@@ -956,7 +986,8 @@ class MainWindow(QMainWindow):
             if checkbox.isChecked():
                 if is_set:
                     try:
-                        new_coords = [float(self.point_inputs[i][j].text()) for j in range(3)]
+                        new_coords = [
+                            float(self.point_inputs[i][j].text()) for j in range(3)]
                         if new_coords != self.point_coords[i]:
                             self.point_coords[i] = new_coords
                             self.update_point_display(i)
@@ -964,7 +995,8 @@ class MainWindow(QMainWindow):
                         else:
                             print(f"Point {i+1} coordinates unchanged")
                     except ValueError:
-                        print(f"Invalid input for Point {i+1}. Please enter valid numbers.")
+                        print(
+                            f"Invalid input for Point {i+1}. Please enter valid numbers.")
                 else:  # Reset
                     self.reset_point_to_origin(i)
 
@@ -973,9 +1005,11 @@ class MainWindow(QMainWindow):
 
         self.render_window.Render()
 
+
 def signal_handler(sig, frame):
     print("Ctrl+C detected, closing application...")
     QApplication.instance().quit()
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
