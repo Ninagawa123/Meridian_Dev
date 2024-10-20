@@ -24,7 +24,9 @@ $ conda activate urdf
 $ conda install numpy=2.1.1  
 $ pip install PyQt5==5.15.11  
 $ pip install vtk==9.3.1  
-```  
+```
+
+他の方法だと仮想環境にqt6がインストールされる場合があるのでご注意ください。  
   
 ## 実行方法  
 ```
