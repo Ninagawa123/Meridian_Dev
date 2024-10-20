@@ -245,8 +245,6 @@ class MainWindow(QMainWindow):
         for i in range(self.num_points):
             checkbox = QCheckBox(f"Point {i+1}")
             checkbox.setChecked(True)
-            checkbox.stateChanged.connect(
-                lambda state, index=i: self.toggle_point(state, index))
             self.point_checkboxes.append(checkbox)
             points_layout.addWidget(checkbox, i, 0)
 
@@ -761,13 +759,6 @@ class MainWindow(QMainWindow):
     def export_urdf(self):
         print("URDF export functionality will be implemented here")
 
-    def toggle_point(self, state, index):
-        if state == Qt.CheckState.Checked.value:
-            self.show_point(index)
-        else:
-            self.hide_point(index)
-        self.render_window.Render()
-
     def get_axis_length(self):
         if self.model_bounds:
             size = max([
@@ -899,7 +890,6 @@ class MainWindow(QMainWindow):
 
         return horizontal_axis, vertical_axis, screen_right, screen_up
 
-
     def export_stl_with_new_origin(self):
         if not self.stl_actor or not any(self.point_actors):
             print("STLモデルまたはポイントが設定されていません。")
@@ -922,7 +912,7 @@ class MainWindow(QMainWindow):
             # Step 1: 選択されたポイントを原点とする平行移動
             translation = vtk.vtkTransform()
             translation.Translate(-origin_point[0], -
-                                origin_point[1], -origin_point[2])
+                                  origin_point[1], -origin_point[2])
 
             # Step 2: 画面の向きに基づいた新しい座標系を作成
             camera = self.renderer.GetActiveCamera()
