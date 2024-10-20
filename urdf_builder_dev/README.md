@@ -15,9 +15,22 @@ STLの軸や中心を再設定できるpythonです。
 - PyQt5 Version: 5.15.11
 - pvtk　Version: 9.3.1
 にて動作を確認しました。  
+
+## conda での環境構築
+
+```  
+$ conda create -n urdf python=3.11  
+$ conda activate urdf  
+$ conda install numpy=2.1.1  
+$ pip install PyQt5==5.15.11  
+$ pip install vtk==9.3.1  
+```  
   
 ## 実行方法  
-```python stl_reorienter.py```  
+```
+cd [urdf_reorienter.pyがあるディレクトリ]  
+python urdf_reorienter.py  
+```  
   
 ## 操作方法  
 as,ws,qeキー：座標軸を上下、左右、ロールに90度ずつ回転させる  
