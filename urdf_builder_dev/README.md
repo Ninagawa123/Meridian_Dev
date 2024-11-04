@@ -44,8 +44,6 @@ stl_reorienter_pyside6.py を使用します。
 $ pip install numpy
 $ pip install PySide6
 $ pip install vtk
-$ pip install NodeGraphQt
-$ pip install pybullet
 ```
 
   
