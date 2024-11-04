@@ -10,13 +10,22 @@ STLの軸や中心を再設定できるpythonです。
 （画面に見えている状態の上をzプラス、右をyプラスとして保存できる。）  
   
 ## ライブラリ等のバージョン  
+
+PyQt5版  
 - python Version: 3.11
 - numpy Version: 2.1.1
 - PyQt5 Version: 5.15.11
-- pvtk　Version: 9.3.1
+- vtk　Version: 9.3.1
+     
+PySide6版  
+- python Version: 3.11
+- numpy Version: 2.1.3
+- PySide6 Version: 6.8.0.2
+- vtk　Version: 9.3.1
+
 にて動作を確認しました。  
 
-## conda での環境構築
+## conda(PyQt5版) での環境構築
 
 ```  
 $ conda create -n urdf python=3.11  
@@ -25,8 +34,20 @@ $ conda install numpy=2.1.1
 $ pip install PyQt5==5.15.11  
 $ pip install vtk==9.3.1  
 ```
-
 他の方法だと仮想環境にqt6がインストールされる場合があるのでご注意ください。  
+
+## pip(PySide6版)  での環境構築
+  
+stl_reorienter_pyside6.py を使用します。
+  
+```  
+$ pip install numpy
+$ pip install PySide6
+$ pip install vtk
+$ pip install NodeGraphQt
+$ pip install pybullet
+```
+
   
 ## 実行方法  
 ```
