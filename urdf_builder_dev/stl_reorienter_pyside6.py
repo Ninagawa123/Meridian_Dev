@@ -11,9 +11,10 @@ from PySide6.QtCore import QTimer, Qt
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 
 # python Version: 3.11
-# numpy Version: 2.1.1
-# PyQt5 Version: 5.15.11
-# pvtk　Version: 9.3.1
+# numpy Version: 2.1.3
+# PySide6 Version: 6.8.0.2
+# vtk　Version: 9.3.1
+
 
 class CustomInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
     def __init__(self, parent=None):
