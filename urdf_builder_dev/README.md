@@ -15,18 +15,20 @@ PyQt5版
 - python Version: 3.11
 - numpy Version: 2.1.1
 - PyQt5 Version: 5.15.11
-- vtk　Version: 9.3.1
+- vtk Version: 9.3.1
      
 PySide6版  
 - python Version: 3.11
 - numpy Version: 2.1.3
 - PySide6 Version: 6.8.0.2
-- vtk　Version: 9.3.1
+- vtk Version: 9.3.1
 
 にて動作を確認しました。  
 
 ## conda(PyQt5版) での環境構築
 
+stl_reorienter.py を使用します。  
+  
 ```  
 $ conda create -n urdf python=3.11  
 $ conda activate urdf  
