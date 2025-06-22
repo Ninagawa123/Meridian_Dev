@@ -1,8 +1,8 @@
 /*
-　ESP32+MeridainBoard , Serial2(RightSide)にて動作
   非同期書き込みの例はSTS3215で動作確認済み。サーボの出荷時速度単位は0.0146rpm、サーボ動作速度V=3400
   もし出荷時速度単位が0.732rpmの場合は、速度をV=68に変更し、遅延計算式はT=[(P1-P0)/(50*V)]*1000+[(50*V)/(A*100)]*1000
-  SyncWritePosEx同等処理版 - 1つのパケットで複数サーボを制御
+  
+  SyncWritePosEx同等処理版 - 一括送信最適化
 */
 
 #define PIN_EN 4
@@ -22,6 +22,9 @@ typedef unsigned short u16;
 // SMS/STSレジスタ定義
 #define SMS_STS_ACC 41
 #define SMS_STS_TORQUE_ENABLE 40
+
+// 最大パケットサイズ定義
+#define MAX_PACKET_SIZE 256
 
 // グローバル変数
 HardwareSerial* servoSerial = &Serial2;  // 使用するシリアルポート
@@ -53,7 +56,7 @@ void flushReceiveBuffer() {
     while (servoSerial->read() != -1);
 }
 
-// SyncWritePosEx実装（1つのパケットで複数サーボ制御）
+// SyncWritePosEx実装（一括送信最適化版）
 bool SyncWritePosEx(u8 ID[], u8 IDN, s16 Position[], u16 Speed[], u8 ACC[]) {
     // 入力チェック
     if (IDN == 0 || IDN > 20) {
@@ -65,23 +68,37 @@ bool SyncWritePosEx(u8 ID[], u8 IDN, s16 Position[], u16 Speed[], u8 ACC[]) {
     const u8 dataPerServo = 7;
     const u8 messageLength = ((dataPerServo + 1) * IDN + 4); // +1はID, +4は基本ヘッダ
     
-    Serial.print("SyncWrite: Sending ");
-    Serial.print(IDN);
-    Serial.println(" servos in one packet");
+    // パケット全体のサイズ計算（ヘッダ7バイト + データ部 + チェックサム1バイト）
+    const u16 totalPacketSize = 7 + (dataPerServo + 1) * IDN + 1;
     
-    // ヘッダ送信
-    writeServo(0xff);
-    writeServo(0xff);
-    writeServo(0xfe);           // ブロードキャストID
-    writeServo(messageLength);
-    writeServo(INST_SYNC_WRITE);
-    writeServo(SMS_STS_ACC);    // 開始レジスタアドレス
-    writeServo(dataPerServo);   // 各サーボのデータ長
+    if (totalPacketSize > MAX_PACKET_SIZE) {
+        Serial.println("Error: Packet size too large");
+        return false;
+    }
+    
+    Serial.print("SyncWrite: Preparing ");
+    Serial.print(IDN);
+    Serial.print(" servos, packet size: ");
+    Serial.print(totalPacketSize);
+    Serial.println(" bytes");
+    
+    // パケットバッファ準備
+    u8 packet[MAX_PACKET_SIZE];
+    u16 packetIndex = 0;
+    
+    // ヘッダ構築
+    packet[packetIndex++] = 0xff;
+    packet[packetIndex++] = 0xff;
+    packet[packetIndex++] = 0xfe;           // ブロードキャストID
+    packet[packetIndex++] = messageLength;
+    packet[packetIndex++] = INST_SYNC_WRITE;
+    packet[packetIndex++] = SMS_STS_ACC;    // 開始レジスタアドレス
+    packet[packetIndex++] = dataPerServo;   // 各サーボのデータ長
     
     // チェックサム計算開始
     u8 checksum = 0xfe + messageLength + INST_SYNC_WRITE + SMS_STS_ACC + dataPerServo;
     
-    // 各サーボのIDとデータ送信
+    // 各サーボのIDとデータをパケットに追加
     for (u8 i = 0; i < IDN; i++) {
         s16 pos = Position[i];
         
@@ -95,22 +112,32 @@ bool SyncWritePosEx(u8 ID[], u8 IDN, s16 Position[], u16 Speed[], u8 ACC[]) {
         u16 speed = Speed ? Speed[i] : 0;
         u8 acc = ACC ? ACC[i] : 0;
         
-        // サーボIDを送信
-        writeServo(ID[i]);
+        // サーボIDを追加
+        packet[packetIndex++] = ID[i];
         checksum += ID[i];
         
-        // 7バイトのデータを送信
-        u8 dataBuffer[7];
-        dataBuffer[0] = acc;  // 加速度
-        Host2SMS(&dataBuffer[1], &dataBuffer[2], pos);    // 位置
-        Host2SMS(&dataBuffer[3], &dataBuffer[4], 0);      // 時間（0固定）
-        Host2SMS(&dataBuffer[5], &dataBuffer[6], speed);  // 速度
+        // 7バイトのデータを追加
+        packet[packetIndex++] = acc;  // 加速度
+        checksum += acc;
         
-        // データ送信とチェックサム計算
-        for (u8 j = 0; j < 7; j++) {
-            writeServo(dataBuffer[j]);
-            checksum += dataBuffer[j];
-        }
+        // 位置データ（2バイト）
+        u8 posL, posH;
+        Host2SMS(&posL, &posH, pos);
+        packet[packetIndex++] = posL;
+        packet[packetIndex++] = posH;
+        checksum += posL + posH;
+        
+        // 時間データ（2バイト、0固定）
+        packet[packetIndex++] = 0;
+        packet[packetIndex++] = 0;
+        // チェックサムには0を加算（変化なし）
+        
+        // 速度データ（2バイト）
+        u8 speedL, speedH;
+        Host2SMS(&speedL, &speedH, speed);
+        packet[packetIndex++] = speedL;
+        packet[packetIndex++] = speedH;
+        checksum += speedL + speedH;
         
         Serial.print("  ID ");
         Serial.print(ID[i]);
@@ -122,33 +149,89 @@ bool SyncWritePosEx(u8 ID[], u8 IDN, s16 Position[], u16 Speed[], u8 ACC[]) {
         Serial.println(acc);
     }
     
-    // チェックサム送信
-    writeServo(~checksum);
+    // チェックサムを追加
+    packet[packetIndex++] = ~checksum;
+    
+    // パケット全体を一括送信
+    Serial.print("Sending packet: ");
+    Serial.print(packetIndex);
+    Serial.println(" bytes");
+    
+    writeServo(packet, packetIndex);
     flushServo();
     
     Serial.println("SyncWrite packet sent successfully");
     return true;
 }
 
-// トルクイネーブル（個別送信）
+// トルクイネーブル（一括送信版）
 bool EnableTorque(u8 ID, u8 Enable) {
+    // パケットバッファ準備
+    u8 packet[8];  // 最大8バイト
+    u8 packetIndex = 0;
     u8 messageLength = 4;
-    u8 checksum = 0;
     
-    // ヘッダ送信
-    writeServo(0xff);
-    writeServo(0xff);
-    writeServo(ID);
-    writeServo(messageLength);
-    writeServo(INST_REG_WRITE);
-    writeServo(SMS_STS_TORQUE_ENABLE);
+    // ヘッダ構築
+    packet[packetIndex++] = 0xff;
+    packet[packetIndex++] = 0xff;
+    packet[packetIndex++] = ID;
+    packet[packetIndex++] = messageLength;
+    packet[packetIndex++] = INST_REG_WRITE;
+    packet[packetIndex++] = SMS_STS_TORQUE_ENABLE;
     
-    // データ送信
-    writeServo(Enable);
+    // データ追加
+    packet[packetIndex++] = Enable;
     
-    // チェックサム計算と送信
-    checksum = ID + messageLength + INST_REG_WRITE + SMS_STS_TORQUE_ENABLE + Enable;
-    writeServo(~checksum);
+    // チェックサム計算と追加
+    u8 checksum = ID + messageLength + INST_REG_WRITE + SMS_STS_TORQUE_ENABLE + Enable;
+    packet[packetIndex++] = ~checksum;
+    
+    // 一括送信
+    writeServo(packet, packetIndex);
+    flushServo();
+    
+    return true;
+}
+
+// 汎用パケット構築・送信関数
+bool sendPacket(u8 targetID, u8 instruction, u8 startAddress, u8* data, u8 dataLength) {
+    // パケットサイズ計算
+    u8 messageLength = dataLength ? (dataLength + 3) : 2;
+    u8 totalSize = dataLength ? (6 + dataLength + 1) : (5 + 1);
+    
+    if (totalSize > MAX_PACKET_SIZE) {
+        Serial.println("Error: Packet too large");
+        return false;
+    }
+    
+    // パケットバッファ準備
+    u8 packet[MAX_PACKET_SIZE];
+    u8 packetIndex = 0;
+    
+    // ヘッダ構築
+    packet[packetIndex++] = 0xff;
+    packet[packetIndex++] = 0xff;
+    packet[packetIndex++] = targetID;
+    packet[packetIndex++] = messageLength;
+    packet[packetIndex++] = instruction;
+    
+    // アドレスとデータ（存在する場合）
+    u8 checksum = targetID + messageLength + instruction;
+    if (data && dataLength > 0) {
+        packet[packetIndex++] = startAddress;
+        checksum += startAddress;
+        
+        for (u8 i = 0; i < dataLength; i++) {
+            packet[packetIndex++] = data[i];
+            checksum += data[i];
+        }
+    }
+    
+    // チェックサム追加
+    packet[packetIndex++] = ~checksum;
+    
+    // 一括送信
+    writeServo(packet, packetIndex);
     flushServo();
     
     return true;
@@ -178,7 +261,7 @@ bool currentDirection = true;  // true: 4000へ, false: 500へ
 unsigned long lastMoveTime = 0;
 const unsigned long MOVE_INTERVAL = 2000;  // 2秒間隔
 
-// 往復移動の実行（SyncWritePosEx版）
+// 往復移動の実行（最適化版）
 void executeReciprocationSync() {
     unsigned long currentTime = millis();
     
@@ -197,7 +280,7 @@ void executeReciprocationSync() {
         u16 activeSpeeds[] = {1000, 1000};
         u8 activeACCs[] = {50, 50};
         
-        // SyncWritePosExで一括送信（1つのパケット）
+        // SyncWritePosExで一括送信（最適化版）
         SyncWritePosEx(activeIDs, 2, activePositions, activeSpeeds, activeACCs);
         
         // 方向切り替え
@@ -211,39 +294,76 @@ void executeReciprocationSync() {
     }
 }
 
-//// 全サーボ制御版（参考）
-//void executeAllServosSync() {
-//    static bool allDirection = true;
-//    static unsigned long lastAllMove = 0;
-//    const unsigned long ALL_MOVE_INTERVAL = 5000;  // 5秒間隔
-//    
-//    unsigned long currentTime = millis();
-//    
-//    if (currentTime - lastAllMove >= ALL_MOVE_INTERVAL) {
-//        Serial.println("Moving all 6 servos with SyncWrite:");
-//        
-//        // 全6台のサーボ設定例
-//        s16 allPositions[6];
-//        u16 allSpeeds[] = {800, 900, 1000, 850, 950, 750};
-//        u8 allACCs[] = {40, 45, 50, 42, 48, 38};
-//        
-//        if (allDirection) {
-//            // MAX位置パターン
-//            allPositions[0] = 4000; allPositions[1] = 4000; allPositions[2] = 3500;
-//            allPositions[3] = 3800; allPositions[4] = 3600; allPositions[5] = 3700;
-//        } else {
-//            // MIN位置パターン  
-//            allPositions[0] = 500;  allPositions[1] = 500;  allPositions[2] = 800;
-//            allPositions[3] = 600;  allPositions[4] = 700;  allPositions[5] = 650;
-//        }
-//        
-//        // 全サーボを1つのパケットで制御
-//        SyncWritePosEx(armIDs, 6, allPositions, allSpeeds, allACCs);
-//        
-//        allDirection = !allDirection;
-//        lastAllMove = currentTime;
-//    }
-//}
+// パケット内容をHEXで表示するデバッグ関数
+void debugPacketContent(u8 ID[], u8 IDN, s16 Position[], u16 Speed[], u8 ACC[]) {
+    Serial.println("\n=== Packet Debug ===");
+    
+    // パケット構築（デバッグ用）
+    const u8 dataPerServo = 7;
+    const u8 messageLength = ((dataPerServo + 1) * IDN + 4);
+    const u16 totalPacketSize = 7 + (dataPerServo + 1) * IDN + 1;
+    
+    u8 packet[MAX_PACKET_SIZE];
+    u16 packetIndex = 0;
+    
+    // ヘッダ
+    packet[packetIndex++] = 0xff;
+    packet[packetIndex++] = 0xff;
+    packet[packetIndex++] = 0xfe;
+    packet[packetIndex++] = messageLength;
+    packet[packetIndex++] = INST_SYNC_WRITE;
+    packet[packetIndex++] = SMS_STS_ACC;
+    packet[packetIndex++] = dataPerServo;
+    
+    u8 checksum = 0xfe + messageLength + INST_SYNC_WRITE + SMS_STS_ACC + dataPerServo;
+    
+    // データ部
+    for (u8 i = 0; i < IDN; i++) {
+        s16 pos = Position[i];
+        if (pos < 0) {
+            pos = -pos;
+            pos |= (1 << 15);
+        }
+        
+        u16 speed = Speed ? Speed[i] : 0;
+        u8 acc = ACC ? ACC[i] : 0;
+        
+        packet[packetIndex++] = ID[i];
+        checksum += ID[i];
+        
+        packet[packetIndex++] = acc;
+        checksum += acc;
+        
+        u8 posL, posH;
+        Host2SMS(&posL, &posH, pos);
+        packet[packetIndex++] = posL;
+        packet[packetIndex++] = posH;
+        checksum += posL + posH;
+        
+        packet[packetIndex++] = 0;
+        packet[packetIndex++] = 0;
+        
+        u8 speedL, speedH;
+        Host2SMS(&speedL, &speedH, speed);
+        packet[packetIndex++] = speedL;
+        packet[packetIndex++] = speedH;
+        checksum += speedL + speedH;
+    }
+    
+    packet[packetIndex++] = ~checksum;
+    
+    // HEX表示
+    Serial.print("Packet (");
+    Serial.print(packetIndex);
+    Serial.print(" bytes): ");
+    for (u16 i = 0; i < packetIndex; i++) {
+        if (packet[i] < 0x10) Serial.print("0");
+        Serial.print(packet[i], HEX);
+        Serial.print(" ");
+    }
+    Serial.println();
+    Serial.println("==================\n");
+}
 
 // 初期化
 void setup() {
@@ -257,12 +377,12 @@ void setup() {
     delay(1000);
     
     Serial.println("=====================================");
-    Serial.println("SMS/STS Servo SyncWritePosEx Version");
-    Serial.println("1 Packet = Multiple Servos Control");
+    Serial.println("SMS/STS Servo SyncWrite Optimized");
+    Serial.println("Batch Transmission Version");
     Serial.println("=====================================");
     Serial.println("Communication method: SyncWrite (0x83)");
-    Serial.println("Servos per packet: Multiple");
-    Serial.println("Sync accuracy: High (±few ms)");
+    Serial.println("Optimization: Single writeServo() call");
+    Serial.println("Packet size: Calculated dynamically");
     Serial.println("=====================================");
 
     // サーボのトルクイネーブル
@@ -279,106 +399,21 @@ void setup() {
     u16 initSpeeds[] = {800, 800};
     u8 initACCs[] = {30, 30};
     
+    // デバッグ表示
+    debugPacketContent(initIDs, 2, initPositions, initSpeeds, initACCs);
+    
     SyncWritePosEx(initIDs, 2, initPositions, initSpeeds, initACCs);
     delay(2000);  // 初期位置到達待ち
     
-    Serial.println("Starting SyncWrite reciprocating motion...");
+    Serial.println("Starting optimized SyncWrite motion...");
     Serial.println();
     
     lastMoveTime = millis();
 }
 
 void loop() {
-    // メインの往復移動（ID1,2のみ）
+    // メインの往復移動（最適化版）
     executeReciprocationSync();
     
-    // 全サーボ制御のデモ（コメントアウト解除で有効）
-    // executeAllServosSync();
-    
-    // シリアルコマンド処理
-    handleSerialCommands();
-    
     delay(50);  // CPU負荷軽減
-}
-
-// シリアルコマンド処理
-void handleSerialCommands() {
-    if (Serial.available()) {
-        char command = Serial.read();
-        
-        switch (command) {
-            case 'm':
-            case 'M':
-                Serial.println("Manual move triggered");
-                lastMoveTime = 0;  // 強制的に次の移動をトリガー
-                break;
-                
-            case 'a':
-            case 'A':
-                Serial.println("All servos demo move");
-                executeAllServosSync();
-                break;
-                
-            case 't':
-            case 'T':
-                Serial.println("Testing SyncWrite with different patterns:");
-                testSyncWritePatterns();
-                break;
-                
-            case 's':
-            case 'S':
-                Serial.println("=== Current Status ===");
-                Serial.print("Direction: ");
-                Serial.println(currentDirection ? "to 4000" : "to 500");
-                Serial.print("Next move in: ");
-                Serial.print((MOVE_INTERVAL - (millis() - lastMoveTime)) / 1000);
-                Serial.println(" seconds");
-                Serial.println("======================");
-                break;
-                
-            case 'h':
-            case 'H':
-                Serial.println("=== Commands ===");
-                Serial.println("M - Manual move");
-                Serial.println("A - All servos demo");
-                Serial.println("T - Test patterns");
-                Serial.println("S - Show status");
-                Serial.println("H - Show help");
-                Serial.println("================");
-                break;
-        }
-        
-        // バッファクリア
-        while (Serial.available()) Serial.read();
-    }
-}
-
-// SyncWriteのテストパターン
-void testSyncWritePatterns() {
-    Serial.println("Pattern 1: Wave motion");
-    u8 testIDs[] = {1, 2, 3, 4, 5, 6};
-    s16 wavePositions[] = {1000, 2000, 3000, 4000, 3000, 2000};
-    u16 waveSpeeds[] = {500, 600, 700, 800, 700, 600};
-    u8 waveACCs[] = {30, 35, 40, 45, 40, 35};
-    
-    SyncWritePosEx(testIDs, 6, wavePositions, waveSpeeds, waveACCs);
-    delay(3000);
-    
-    Serial.println("Pattern 2: Alternating motion");
-    s16 altPositions[] = {4000, 500, 4000, 500, 4000, 500};
-    u16 altSpeeds[] = {1000, 1000, 1000, 1000, 1000, 1000};
-    u8 altACCs[] = {50, 50, 50, 50, 50, 50};
-    
-    SyncWritePosEx(testIDs, 6, altPositions, altSpeeds, altACCs);
-    delay(3000);
-    
-    Serial.println("Pattern 3: Center return");
-    s16 centerPositions[] = {2200, 2200, 2200, 2200, 2200, 2200};
-    u16 centerSpeeds[] = {800, 800, 800, 800, 800, 800};
-    u8 centerACCs[] = {40, 40, 40, 40, 40, 40};
-    
-    SyncWritePosEx(testIDs, 6, centerPositions, centerSpeeds, centerACCs);
-    delay(2000);
-    
-    Serial.println("Test patterns completed");
 }
