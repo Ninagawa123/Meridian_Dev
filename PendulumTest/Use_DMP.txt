@@ -1,0 +1,4 @@
+To Use DMP on MPU6040, see as follows,
+https://qiita.com/Ninagawa123/items/2646c7d3d98943919f80
+
+MPU6050(GY-521)のDMPを使用したセンサフュージョン用の設定
